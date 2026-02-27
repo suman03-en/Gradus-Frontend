@@ -2,15 +2,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://YOUR_BACKEND_URL.com/api/:path*"
+      "destination": "https://gradus-django.up.railway.app/api/:path*"
     },
     {
       "source": "/admin/:path*",
-      "destination": "https://YOUR_BACKEND_URL.com/admin/:path*"
+      "destination": "https://gradus-django.up.railway.app/admin/:path*"
     },
     {
       "source": "/media/:path*",
-      "destination": "https://YOUR_BACKEND_URL.com/media/:path*"
+      "destination": "https://gradus-django.up.railway.app/media/:path*"
     },
     {
       "source": "/(.*)",
