@@ -23,6 +23,8 @@ function extractFirstValidationMessage(payload: unknown): string | null {
   return null
 }
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+
 function getCookie(name: string): string | null {
   const parts = document.cookie.split(';').map((p) => p.trim())
   const hit = parts.find((p) => p.startsWith(`${name}=`))
@@ -34,7 +36,7 @@ async function ensureCsrfCookie() {
   // Django will set a CSRF cookie on admin pages.
   // Using Vite proxy keeps it same-origin in dev.
   if (getCookie('csrftoken')) return
-  await fetch('/admin/login/', { credentials: 'include' })
+  await fetch(`${BASE_URL}/admin/login/`, { credentials: 'include' })
 }
 
 function buildError(res: Response, payload: unknown): ApiError {
@@ -67,8 +69,8 @@ export async function apiJson<T>(
   if (opts?.body !== undefined) headers['Content-Type'] = 'application/json'
   const csrf = getCookie('csrftoken')
   if (needsCsrf && csrf) headers['X-CSRFToken'] = csrf
-
-  const res = await fetch(path, {
+  
+  const res = await fetch(`${BASE_URL}${path}`, {
     method,
     credentials: 'include',
     headers,
@@ -102,7 +104,7 @@ export async function apiFormData<T>(
   const csrf = getCookie('csrftoken')
   if (csrf) headers['X-CSRFToken'] = csrf
 
-  const res = await fetch(path, {
+  const res = await fetch(`${BASE_URL}${path}`, {
     method,
     credentials: 'include',
     headers,
