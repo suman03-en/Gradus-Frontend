@@ -15,10 +15,24 @@ function userFriendlyHttpMessage(status: number): string | null {
 function extractFirstValidationMessage(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null
   const obj = payload as Record<string, unknown>
+  
+  // Prioritize certain keys for common error responses (like Django's non_field_errors or detail)
+  const priorityKeys = ['non_field_errors', 'detail', 'message', 'error']
+  for (const key of priorityKeys) {
+    const v = obj[key]
+    if (typeof v === 'string') return v
+    if (Array.isArray(v) && v.length && typeof v[0] === 'string') return v[0]
+  }
+
+  // Fallback to searching all keys
   for (const key of Object.keys(obj)) {
     const v = obj[key]
     if (typeof v === 'string') return v
-    if (Array.isArray(v) && v.length && typeof v[0] === 'string') return `${key}: ${v[0]}`
+    if (Array.isArray(v) && v.length && typeof v[0] === 'string') {
+      // If it's the standard Django non_field_errors, just return the value.
+      // Otherwise, prefix with the field name.
+      return key === 'non_field_errors' ? v[0] : `${key}: ${v[0]}`
+    }
   }
   return null
 }
