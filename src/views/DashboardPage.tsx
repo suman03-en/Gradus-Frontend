@@ -141,7 +141,7 @@ export function DashboardPage() {
             </div>
             <div className="card p-5 border-l-2 border-l-emerald-400">
               <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">{isStudent ? 'GPA Estimate' : 'Performance'}</div>
-              <div className="mt-2 text-3xl font-extrabold text-slate-900">{isStudent ? '3.8' : '92%'}</div>
+              <div className="mt-2 text-3xl font-extrabold text-slate-900">{isStudent ? 'N/A' : 'N/A'}</div>
             </div>
             <div className="card p-5 border-l-2 border-l-amber-400">
               <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Updates</div>
