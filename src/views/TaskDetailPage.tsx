@@ -132,7 +132,7 @@ export function TaskDetailPage() {
       const fd = new FormData()
       fd.append('uploaded_file', file)
       
-      const mySub = submissions.find((s) => s.student === user?.username)
+      const mySub = submissions.find((s) => s.student === user?.id)
       if (mySub) {
         await apiFormData<TaskSubmission>(`/api/v1/tasks/submissions/${mySub.id}/update`, fd, { method: 'PATCH' })
         setSubmitMsg('Submission updated successfully!')
@@ -291,7 +291,7 @@ export function TaskDetailPage() {
           {isStudent && (
             <div className="card p-6">
               {(() => {
-                const mySub = submissions.find((s) => s.student === user?.username)
+                const mySub = submissions.find((s) => s.student === user?.id)
                 const isEvaluated = mySub && evaluations[mySub.id]
                 return (
                   <>
@@ -359,7 +359,7 @@ export function TaskDetailPage() {
                     <div key={sub.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium text-slate-900">{sub.student}</div>
+                          <div className="text-sm font-medium text-slate-900">{sub.student_username || sub.student}</div>
                           <div className="mt-1 text-xs text-slate-500">
                             Submitted: {new Date(sub.submitted_at).toLocaleString()}
                           </div>

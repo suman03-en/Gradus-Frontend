@@ -52,6 +52,7 @@ export type TaskSubmission = {
   id: string
   task: string
   student: string
+  student_username?: string
   uploaded_file: string
   submitted_at: string
 }
