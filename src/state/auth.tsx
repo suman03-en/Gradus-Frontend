@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { apiJson } from '../lib/api'
+import { apiJson, setToken, getToken } from '../lib/api'
 import type { User } from '../lib/types'
 
 type AuthState = {
@@ -17,20 +17,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   const refresh = useCallback(async () => {
+    const token = getToken()
+    if (!token) {
+      setUser(null)
+      return
+    }
+
     try {
       const me = await apiJson<User>('/api/v1/accounts/users/me')
       setUser(me)
     } catch {
       setUser(null)
+      setToken(null) // Clear invalid token
     }
   }, [])
 
   const login = useCallback(
     async (username: string, password: string) => {
-      await apiJson<{ details: string }>('/api/v1/accounts/login/', {
+      const res = await apiJson<{ detail: string; token: string }>('/api/v1/auth-token/login/', {
         method: 'POST',
         body: { username, password },
       })
+      if (res.token) {
+        setToken(res.token)
+      }
       await refresh()
     },
     [refresh],
@@ -38,8 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await apiJson<{ details: string }>('/api/v1/accounts/logout/', { method: 'POST' })
+      await apiJson<{ detail: string }>('/api/v1/auth-token/logout/', { method: 'POST' })
     } finally {
+      setToken(null)
       setUser(null)
     }
   }, [])

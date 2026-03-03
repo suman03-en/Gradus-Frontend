@@ -24,6 +24,19 @@ function extractFirstValidationMessage(payload: unknown): string | null {
 }
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const TOKEN_KEY = 'gradus_auth_token'
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export function setToken(token: string | null) {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token)
+  } else {
+    localStorage.removeItem(TOKEN_KEY)
+  }
+}
 
 function getCookie(name: string): string | null {
   const parts = document.cookie.split(';').map((p) => p.trim())
@@ -32,47 +45,29 @@ function getCookie(name: string): string | null {
   return decodeURIComponent(hit.substring(name.length + 1))
 }
 
-async function ensureCsrfCookie() {
-  // Django will set a CSRF cookie on admin pages.
-  // Using Vite proxy keeps it same-origin in dev.
-  if (getCookie('csrftoken')) return
-  await fetch(`${BASE_URL}/admin/login/`, { credentials: 'include' })
-}
-
-function buildError(res: Response, payload: unknown): ApiError {
-  const messageFromPayload =
-    (typeof payload === 'object' && payload && 'detail' in payload && String((payload as any).detail)) ||
-    (typeof payload === 'object' && payload && 'details' in payload && String((payload as any).details)) ||
-    extractFirstValidationMessage(payload) ||
-    null
-  const message = messageFromPayload || userFriendlyHttpMessage(res.status) || `Request failed (${res.status})`
-  return { status: res.status, message, details: payload }
-}
-
 export async function apiJson<T>(
   path: string,
   opts?: {
     method?: string
     body?: unknown
     headers?: Record<string, string>
-    csrf?: boolean
   },
 ): Promise<T> {
   const method = (opts?.method ?? 'GET').toUpperCase()
-  const needsCsrf = opts?.csrf ?? ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
-  if (needsCsrf) await ensureCsrfCookie()
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...(opts?.headers ?? {}),
   }
   if (opts?.body !== undefined) headers['Content-Type'] = 'application/json'
-  const csrf = getCookie('csrftoken')
-  if (needsCsrf && csrf) headers['X-CSRFToken'] = csrf
+  
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Token ${token}`
+  }
   
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
-    credentials: 'include',
     headers,
     body: opts?.body === undefined ? undefined : JSON.stringify(opts.body),
   })
@@ -96,17 +91,18 @@ export async function apiFormData<T>(
   opts?: { method?: string },
 ): Promise<T> {
   const method = (opts?.method ?? 'POST').toUpperCase()
-  await ensureCsrfCookie()
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
   }
-  const csrf = getCookie('csrftoken')
-  if (csrf) headers['X-CSRFToken'] = csrf
+
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Token ${token}`
+  }
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
-    credentials: 'include',
     headers,
     body: formData,
   })

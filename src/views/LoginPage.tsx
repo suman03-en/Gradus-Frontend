@@ -33,9 +33,9 @@ export function LoginPage() {
     <div className="mx-auto grid w-full max-w-5xl gap-8 md:grid-cols-2 md:items-center">
       <div>
         <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-700">
-          Session-based auth
+          Token-based auth
           <span className="h-1 w-1 rounded-full bg-brand-400" />
-          CSRF protected
+          Bearer protected
         </div>
         <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900">Welcome back</h1>
         <p className="mt-2 max-w-prose text-sm text-slate-600">
