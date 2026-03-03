@@ -115,3 +115,23 @@ export async function apiFormData<T>(
 
   return payload as T
 }
+
+export class BuildError extends Error implements ApiError {
+  status: number
+  message: string
+  details?: unknown
+
+  constructor(status: number, message: string, details?: unknown) {
+    super(message)
+    this.status = status
+    this.message = message
+    this.details = details
+    this.name = 'BuildError'
+  }
+}
+
+function buildError(res: Response, payload: any): BuildError {
+  const status = res.status
+  const message = userFriendlyHttpMessage(status) || extractFirstValidationMessage(payload) || 'An unexpected error occurred.'
+  return new BuildError(status, message, payload)
+}
