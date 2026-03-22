@@ -1,17 +1,26 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { apiJson } from '../lib/api'
+import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors | null>(null)
   const [success, setSuccess] = useState(false)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setFieldErrors(null)
+
+    if (!email.trim()) {
+      setFieldErrors({ email: ['Email address is required.'] })
+      return
+    }
+
     setBusy(true)
     try {
       await apiJson<{ detail: string }>('/api/v1/accounts/password-reset/request/', {
@@ -22,8 +31,7 @@ export function ForgotPasswordPage() {
       // Navigate to OTP verification page with email in state
       setTimeout(() => navigate('/verify-otp', { state: { email: email.trim() } }), 1500)
     } catch (err: any) {
-      // The backend always returns success message for security,
-      // but we handle network errors here
+      setFieldErrors(getFieldErrors(err))
       setError(err?.message ?? 'Request failed')
     } finally {
       setBusy(false)
@@ -65,11 +73,18 @@ export function ForgotPasswordPage() {
                 autoComplete="email"
                 placeholder="your@email.com"
               />
+              {firstFieldError(fieldErrors, 'email') && (
+                <div className="mt-1 text-xs font-medium text-red-600">
+                  {firstFieldError(fieldErrors, 'email')}
+                </div>
+              )}
             </div>
 
-            {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+            {error ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+            ) : null}
 
-            <button className="btn-primary w-full" disabled={busy || !email.trim()}>
+            <button className="btn-primary w-full" disabled={busy}>
               {busy ? 'Sending…' : 'Send OTP'}
             </button>
           </form>

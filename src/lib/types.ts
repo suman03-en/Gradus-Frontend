@@ -74,3 +74,13 @@ export type GradebookData = {
     total_full_marks: number
   }[]
 }
+
+export type Resource = {
+  id: number
+  name: string
+  file: string
+  content_type: string
+  object_id: string
+  uploaded_by: string
+  uploaded_at: string
+}

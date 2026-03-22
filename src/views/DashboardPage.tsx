@@ -134,14 +134,10 @@ export function DashboardPage() {
           </section>
 
           {/* Stats */}
-          <section className="grid gap-4 sm:grid-cols-3">
+          <section className="grid gap-4 sm:grid-cols-2">
             <div className="card p-5">
               <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Classrooms</div>
               <div className="mt-2 text-3xl font-extrabold text-slate-900">{classrooms.length}</div>
-            </div>
-            <div className="card p-5 border-l-2 border-l-emerald-400">
-              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">{isStudent ? 'GPA Estimate' : 'Performance'}</div>
-              <div className="mt-2 text-3xl font-extrabold text-slate-900">{isStudent ? 'N/A' : 'N/A'}</div>
             </div>
             <div className="card p-5 border-l-2 border-l-amber-400">
               <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Updates</div>

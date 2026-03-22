@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { apiJson } from '../lib/api'
+import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
 
 export function VerifyOTPPage() {
   const navigate = useNavigate()
@@ -11,10 +12,21 @@ export function VerifyOTPPage() {
   const [otp, setOtp] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors | null>(null)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setFieldErrors(null)
+
+    const clientErrors: FieldErrors = {}
+    if (!email.trim()) clientErrors.email = ['Email address is required.']
+    if (otp.length < 5) clientErrors.otp = ['Please enter the full 5-digit OTP.']
+    if (Object.keys(clientErrors).length) {
+      setFieldErrors(clientErrors)
+      return
+    }
+
     setBusy(true)
     try {
       const res = await apiJson<{ message: string; reset_token: string }>(
@@ -30,6 +42,7 @@ export function VerifyOTPPage() {
         replace: true,
       })
     } catch (err: any) {
+      setFieldErrors(getFieldErrors(err))
       setError(err?.message ?? 'Verification failed')
     } finally {
       setBusy(false)
@@ -65,6 +78,11 @@ export function VerifyOTPPage() {
               autoComplete="email"
               placeholder="your@email.com"
             />
+            {firstFieldError(fieldErrors, 'email') && (
+              <div className="mt-1 text-xs font-medium text-red-600">
+                {firstFieldError(fieldErrors, 'email')}
+              </div>
+            )}
           </div>
           <div>
             <label className="label">OTP Code</label>
@@ -76,11 +94,18 @@ export function VerifyOTPPage() {
               placeholder="•••••"
               autoFocus
             />
+            {firstFieldError(fieldErrors, 'otp') && (
+              <div className="mt-1 text-xs font-medium text-red-600">
+                {firstFieldError(fieldErrors, 'otp')}
+              </div>
+            )}
           </div>
 
-          {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+          {error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          ) : null}
 
-          <button className="btn-primary w-full" disabled={busy || !email.trim() || otp.length < 5}>
+          <button className="btn-primary w-full" disabled={busy}>
             {busy ? 'Verifying…' : 'Verify OTP'}
           </button>
         </form>

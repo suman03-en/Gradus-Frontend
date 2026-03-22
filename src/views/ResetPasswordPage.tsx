@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { apiJson } from '../lib/api'
+import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
 
 export function ResetPasswordPage() {
   const navigate = useNavigate()
@@ -15,18 +16,21 @@ export function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors | null>(null)
   const [success, setSuccess] = useState(false)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setFieldErrors(null)
 
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.')
+    const clientErrors: FieldErrors = {}
+    if (!newPassword) clientErrors.new_password = ['New password is required.']
+    else if (newPassword.length < 8) clientErrors.new_password = ['Password must be at least 8 characters.']
+    if (!confirmPassword) clientErrors.confirm_password = ['Please confirm your password.']
+    else if (newPassword && newPassword !== confirmPassword) clientErrors.confirm_password = ['Passwords do not match.']
+    if (Object.keys(clientErrors).length) {
+      setFieldErrors(clientErrors)
       return
     }
 
@@ -39,6 +43,7 @@ export function ResetPasswordPage() {
       setSuccess(true)
       setTimeout(() => navigate('/login', { replace: true }), 2000)
     } catch (err: any) {
+      setFieldErrors(getFieldErrors(err))
       setError(err?.message ?? 'Reset failed')
     } finally {
       setBusy(false)
@@ -103,6 +108,11 @@ export function ResetPasswordPage() {
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
               />
+              {firstFieldError(fieldErrors, 'new_password') && (
+                <div className="mt-1 text-xs font-medium text-red-600">
+                  {firstFieldError(fieldErrors, 'new_password')}
+                </div>
+              )}
             </div>
             <div>
               <label className="label">Confirm new password</label>
@@ -113,9 +123,16 @@ export function ResetPasswordPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
               />
+              {firstFieldError(fieldErrors, 'confirm_password') && (
+                <div className="mt-1 text-xs font-medium text-red-600">
+                  {firstFieldError(fieldErrors, 'confirm_password')}
+                </div>
+              )}
             </div>
 
-            {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+            {error ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+            ) : null}
 
             <button className="btn-primary w-full" disabled={busy || !newPassword || !confirmPassword}>
               {busy ? 'Resetting…' : 'Reset Password'}

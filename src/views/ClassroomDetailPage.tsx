@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { apiJson } from '../lib/api'
-import type { Classroom, Task } from '../lib/types'
+import type { Classroom, Task, GradebookData } from '../lib/types'
 import { useAuth } from '../state/auth'
 import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES } from '../lib/choices'
+import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
+import { ResourcesPanel } from '../components/ResourcesPanel'
 
 function statusBadge(status: string) {
   if (status === 'published') return 'badge-green'
@@ -29,14 +31,39 @@ export function ClassroomDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', description: '' })
   const [editMsg, setEditMsg] = useState<string | null>(null)
+  const [editSuccess, setEditSuccess] = useState(false)
+  const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors | null>(null)
 
   // Tasks
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
 
+  const [showStudents, setShowStudents] = useState(false)
+  const [gradebook, setGradebook] = useState<GradebookData | null>(null)
+  const [gbLoading, setGbLoading] = useState(false)
+  const fetchGradebook = useCallback(async () => {
+    setGbLoading(true)
+    try {
+      const g = await apiJson<GradebookData>(`/api/v1/classrooms/${id}/gradebook/`)
+      setGradebook(g)
+    } catch {
+      // ignore
+    } finally {
+      setGbLoading(false)
+    }
+  }, [id])
+
+  async function onToggleStudents() {
+    if (!showStudents && !gradebook) {
+      await fetchGradebook()
+    }
+    setShowStudents(!showStudents)
+  }
+
   // Add student form (teacher only)
   const [rollNo, setRollNo] = useState('')
   const [addStudentMsg, setAddStudentMsg] = useState<string | null>(null)
+  const [addStudentSuccess, setAddStudentSuccess] = useState(false)
 
   // Create task form (teacher only)
   const [showCreateTask, setShowCreateTask] = useState(false)
@@ -50,6 +77,8 @@ export function ClassroomDetailPage() {
     task_type: 'assignment',
   })
   const [createTaskMsg, setCreateTaskMsg] = useState<string | null>(null)
+  const [createTaskSuccess, setCreateTaskSuccess] = useState(false)
+  const [createTaskFieldErrors, setCreateTaskFieldErrors] = useState<FieldErrors | null>(null)
 
   useEffect(() => {
     ;(async () => {
@@ -87,15 +116,18 @@ export function ClassroomDetailPage() {
   async function onAddStudent(e: React.FormEvent) {
     e.preventDefault()
     setAddStudentMsg(null)
+    setAddStudentSuccess(false)
     try {
       const res = await apiJson<{ detail: string }>(`/api/v1/classrooms/${id}/students/`, {
         method: 'POST',
         body: { roll_no: rollNo.trim() },
       })
       setAddStudentMsg(res.detail)
+      setAddStudentSuccess(true)
       setRollNo('')
     } catch (err: any) {
       setAddStudentMsg(err?.message ?? 'Add student failed')
+      setAddStudentSuccess(false)
     }
   }
 
@@ -103,6 +135,21 @@ export function ClassroomDetailPage() {
   async function onCreateTask(e: React.FormEvent) {
     e.preventDefault()
     setCreateTaskMsg(null)
+    setCreateTaskSuccess(false)
+    setCreateTaskFieldErrors(null)
+
+    // Client-side validation
+    const clientErrors: FieldErrors = {}
+    if (!taskForm.name.trim()) clientErrors.name = ['Task name is required.']
+    if (!taskForm.end_date) clientErrors.end_date = ['Due date is required.']
+    if (!taskForm.full_marks) clientErrors.full_marks = ['Full marks is required.']
+    if (taskForm.full_marks && Number(taskForm.full_marks) <= 0)
+      clientErrors.full_marks = ['Full marks must be greater than 0.']
+    if (Object.keys(clientErrors).length) {
+      setCreateTaskFieldErrors(clientErrors)
+      return
+    }
+
     try {
       const created = await apiJson<Task>(`/api/v1/classrooms/${id}/tasks/`, {
         method: 'POST',
@@ -117,11 +164,14 @@ export function ClassroomDetailPage() {
         },
       })
       setCreateTaskMsg(`Created "${created.name}"`)
+      setCreateTaskSuccess(true)
       setTaskForm({ name: '', description: '', end_date: '', full_marks: '', status: 'published', mode: 'online', task_type: 'assignment' })
       setShowCreateTask(false)
       await fetchTasks()
     } catch (err: any) {
+      setCreateTaskFieldErrors(getFieldErrors(err))
       setCreateTaskMsg(err?.message ?? 'Create failed')
+      setCreateTaskSuccess(false)
     }
   }
 
@@ -129,6 +179,16 @@ export function ClassroomDetailPage() {
   async function onSaveClassroom(e: React.FormEvent) {
     e.preventDefault()
     setEditMsg(null)
+    setEditSuccess(false)
+    setEditFieldErrors(null)
+
+    const clientErrors: FieldErrors = {}
+    if (!editForm.name.trim()) clientErrors.name = ['Classroom name is required.']
+    if (Object.keys(clientErrors).length) {
+      setEditFieldErrors(clientErrors)
+      return
+    }
+
     try {
       const updated = await apiJson<Classroom>(`/api/v1/classrooms/${id}/`, {
         method: 'PATCH',
@@ -137,8 +197,11 @@ export function ClassroomDetailPage() {
       setItem(updated)
       setEditing(false)
       setEditMsg('Classroom updated.')
+      setEditSuccess(true)
     } catch (err: any) {
+      setEditFieldErrors(getFieldErrors(err))
       setEditMsg(err?.message ?? 'Update failed')
+      setEditSuccess(false)
     }
   }
 
@@ -200,13 +263,35 @@ export function ClassroomDetailPage() {
                   <div className="text-sm font-semibold text-slate-900">Edit Classroom</div>
                   <div>
                     <label className="label">Name</label>
-                    <input className="input" value={editForm.name} onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))} />
+                    <input
+                      className="input mt-1"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                    />
+                    {firstFieldError(editFieldErrors, 'name') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(editFieldErrors, 'name')}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="label">Description</label>
-                    <textarea className="textarea" value={editForm.description} onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))} />
+                    <textarea
+                      className="textarea"
+                      value={editForm.description}
+                      onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
+                    />
+                    {firstFieldError(editFieldErrors, 'description') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(editFieldErrors, 'description')}
+                      </div>
+                    )}
                   </div>
-                  {editMsg && <div className="text-xs font-medium text-brand-600">{editMsg}</div>}
+                  {editMsg && (
+                    <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                      {editMsg}
+                    </div>
+                  )}
                   <button className="btn-primary">Save Changes</button>
                 </form>
               ) : (
@@ -257,18 +342,54 @@ export function ClassroomDetailPage() {
                 <input
                   className="input flex-1"
                   value={rollNo}
-                  onChange={(e) => setRollNo(e.target.value)}
+                  onChange={(e) => setRollNo(e.target.value.toUpperCase())}
                   placeholder="Roll number"
                 />
                 <button className="btn-primary" disabled={!rollNo.trim()}>
                   Add Student
                 </button>
               </form>
-              {addStudentMsg ? (
-                <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800">{addStudentMsg}</div>
-              ) : null}
+              {addStudentMsg && (
+                <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${addStudentSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {addStudentMsg}
+                </div>
+              )}
             </div>
           )}
+
+          {/* ─── Students Roster ─────────────────────── */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-sm font-semibold text-slate-900">Enrolled Students</div>
+              <button className="btn-secondary text-xs" onClick={onToggleStudents} disabled={gbLoading}>
+                {showStudents ? 'Hide Students' : 'View Students'}
+              </button>
+            </div>
+            
+            {showStudents && (
+              <>
+                {gbLoading ? (
+                   <div className="mt-4 animate-pulse h-10 w-full bg-slate-100 rounded-xl" />
+                ) : !gradebook || gradebook.students.length === 0 ? (
+                   <div className="mt-4 text-sm text-slate-500">No students enrolled yet.</div>
+                ) : (
+                   <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                     {gradebook.students.map(s => (
+                       <li key={s.id} className="rounded-xl border border-slate-200 bg-slate-50 flex justify-between items-center p-3">
+                         <Link to={`/users/${s.username}`} className="font-semibold text-sm text-brand-600 hover:underline truncate">
+                            @{s.username}
+                         </Link>
+                         <span className="text-xs font-mono text-slate-500 shrink-0 ml-2">{s.roll_no}</span>
+                       </li>
+                     ))}
+                   </ul>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ─── Resources Panel ──────────────────────── */}
+          {id && <ResourcesPanel contentType="classroom" objectId={id} />}
 
           {/* ─── Tasks Section ─────────────────────── */}
           <div className="space-y-4">
@@ -298,47 +419,101 @@ export function ClassroomDetailPage() {
                 <form className="grid gap-4 sm:grid-cols-2" onSubmit={onCreateTask}>
                   <div className="sm:col-span-2">
                     <label className="label">Name</label>
-                    <input className="input mt-1" value={taskForm.name} onChange={(e) => setTaskForm((f) => ({ ...f, name: e.target.value }))} />
+                    <input
+                      className="input mt-1"
+                      value={taskForm.name}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, name: e.target.value }))}
+                    />
+                    {firstFieldError(createTaskFieldErrors, 'name') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(createTaskFieldErrors, 'name')}
+                      </div>
+                    )}
                   </div>
                   <div className="sm:col-span-2">
                     <label className="label">Description</label>
-                    <textarea className="textarea mt-1" rows={3} value={taskForm.description} onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))} />
+                    <textarea
+                      className="textarea mt-1"
+                      rows={3}
+                      value={taskForm.description}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
+                    />
+                    {firstFieldError(createTaskFieldErrors, 'description') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(createTaskFieldErrors, 'description')}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="label">Due Date</label>
-                    <input className="input mt-1" type="datetime-local" value={taskForm.end_date} onChange={(e) => setTaskForm((f) => ({ ...f, end_date: e.target.value }))} />
+                    <input
+                      className="input mt-1"
+                      type="datetime-local"
+                      value={taskForm.end_date}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, end_date: e.target.value }))}
+                    />
+                    {firstFieldError(createTaskFieldErrors, 'end_date') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(createTaskFieldErrors, 'end_date')}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="label">Full Marks</label>
-                    <input className="input mt-1" type="number" min={0} value={taskForm.full_marks} onChange={(e) => setTaskForm((f) => ({ ...f, full_marks: e.target.value }))} />
+                    <input
+                      className="input mt-1"
+                      type="number"
+                      min={0}
+                      value={taskForm.full_marks}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, full_marks: e.target.value }))}
+                    />
+                    {firstFieldError(createTaskFieldErrors, 'full_marks') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(createTaskFieldErrors, 'full_marks')}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="label">Status</label>
-                    <select className="input mt-1" value={taskForm.status} onChange={(e) => setTaskForm((f) => ({ ...f, status: e.target.value }))}>
+                    <select
+                      className="input mt-1"
+                      value={taskForm.status}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, status: e.target.value }))}
+                    >
                       {TASK_STATUS_CHOICES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="label">Mode</label>
-                    <select className="input mt-1" value={taskForm.mode} onChange={(e) => setTaskForm((f) => ({ ...f, mode: e.target.value }))}>
+                    <select
+                      className="input mt-1"
+                      value={taskForm.mode}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, mode: e.target.value }))}
+                    >
                       {TASK_MODE_CHOICES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="label">Type</label>
-                    <select className="input mt-1" value={taskForm.task_type} onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}>
+                    <select
+                      className="input mt-1"
+                      value={taskForm.task_type}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}
+                    >
                       {TASK_TYPE_CHOICES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   <div className="sm:col-span-2">
-                    <button className="btn-primary" disabled={!taskForm.name.trim() || !taskForm.full_marks || !taskForm.end_date}>
+                    <button className="btn-primary">
                       Create Task
                     </button>
                   </div>
                 </form>
-                {createTaskMsg ? (
-                  <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800">{createTaskMsg}</div>
-                ) : null}
+                {createTaskMsg && (
+                  <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${createTaskSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    {createTaskMsg}
+                  </div>
+                )}
               </div>
             )}
 
