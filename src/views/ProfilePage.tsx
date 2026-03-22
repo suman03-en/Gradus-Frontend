@@ -208,7 +208,7 @@ export function ProfilePage() {
                 <>
                   <div className="sm:col-span-2">
                     <label className="label">Roll Number</label>
-                    <input className="input" value={profile.roll_no ?? ''} onChange={(e) => setProfile((p: any) => ({ ...p, roll_no: e.target.value }))} />
+                    <input className="input" value={profile.roll_no ?? ''} onChange={(e) => setProfile((p: any) => ({ ...p, roll_no: e.target.value.toUpperCase() }))} />
                     {firstFieldError(profileErrors, 'roll_no') ? (
                       <div className="mt-1 text-xs font-medium text-red-600">{firstFieldError(profileErrors, 'roll_no')}</div>
                     ) : null}
@@ -239,6 +239,19 @@ export function ProfilePage() {
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label className="label">Batch Year</label>
+                    <input 
+                      type="number"
+                      className="input" 
+                      placeholder="e.g. 2021"
+                      value={profile.batch_year ?? ''} 
+                      onChange={(e) => setProfile((p: any) => ({ ...p, batch_year: e.target.value ? Number(e.target.value) : null }))} 
+                    />
+                    {firstFieldError(profileErrors, 'batch_year') ? (
+                      <div className="mt-1 text-xs font-medium text-red-600">{firstFieldError(profileErrors, 'batch_year')}</div>
+                    ) : null}
+                  </div>
                 </>
               ) : (
                 <>
@@ -254,10 +267,16 @@ export function ProfilePage() {
                         <option key={d.value} value={d.value}>{d.label}</option>
                       ))}
                     </select>
+                    {firstFieldError(profileErrors, 'department') ? (
+                      <div className="mt-1 text-xs font-medium text-red-600">{firstFieldError(profileErrors, 'department')}</div>
+                    ) : null}
                   </div>
                   <div>
                     <label className="label">Phone</label>
                     <input className="input" value={profile.phone_number ?? ''} onChange={(e) => setProfile((p: any) => ({ ...p, phone_number: e.target.value }))} />
+                    {firstFieldError(profileErrors, 'phone_number') ? (
+                      <div className="mt-1 text-xs font-medium text-red-600">{firstFieldError(profileErrors, 'phone_number')}</div>
+                    ) : null}
                   </div>
                   <div>
                     <label className="label">Designation</label>
@@ -271,6 +290,24 @@ export function ProfilePage() {
                         <option key={d.value} value={d.value}>{d.label}</option>
                       ))}
                     </select>
+                    {firstFieldError(profileErrors, 'designation') ? (
+                      <div className="mt-1 text-xs font-medium text-red-600">{firstFieldError(profileErrors, 'designation')}</div>
+                    ) : null}
+                  </div>
+                  <div>
+                    <label className="label">Employment Type</label>
+                    <select
+                      className="input"
+                      value={profile.is_full_time === true ? 'true' : profile.is_full_time === false ? 'false' : ''}
+                      onChange={(e) => setProfile((p: any) => ({ ...p, is_full_time: e.target.value === 'true' }))}
+                    >
+                      <option value="">Select type</option>
+                      <option value="true">Full-Time</option>
+                      <option value="false">Part-Time</option>
+                    </select>
+                    {firstFieldError(profileErrors, 'is_full_time') ? (
+                      <div className="mt-1 text-xs font-medium text-red-600">{firstFieldError(profileErrors, 'is_full_time')}</div>
+                    ) : null}
                   </div>
                 </>
               )}

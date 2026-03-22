@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { apiJson } from '../lib/api'
 import type { Classroom, User } from '../lib/types'
 import { useAuth } from '../state/auth'
+import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
 
 function isStudent(user: User | null) {
   return !!(user?.profile && 'roll_no' in user.profile)
@@ -16,11 +17,17 @@ export function ClassroomsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Join
   const [inviteCode, setInviteCode] = useState('')
   const [joinMsg, setJoinMsg] = useState<string | null>(null)
+  const [joinSuccess, setJoinSuccess] = useState(false)
+  const [joinFieldErrors, setJoinFieldErrors] = useState<FieldErrors | null>(null)
 
+  // Create
   const [create, setCreate] = useState({ name: '', description: '' })
   const [createMsg, setCreateMsg] = useState<string | null>(null)
+  const [createSuccess, setCreateSuccess] = useState(false)
+  const [createFieldErrors, setCreateFieldErrors] = useState<FieldErrors | null>(null)
 
   async function refresh() {
     setError(null)
@@ -43,32 +50,57 @@ export function ClassroomsPage() {
   async function onJoin(e: React.FormEvent) {
     e.preventDefault()
     setJoinMsg(null)
+    setJoinSuccess(false)
+    setJoinFieldErrors(null)
+
+    if (!inviteCode.trim()) {
+      setJoinFieldErrors({ invite_code: ['Please enter an invite code.'] })
+      return
+    }
+
     try {
       const res = await apiJson<{ detail: string }>('/api/v1/classrooms/join/', {
         method: 'POST',
         body: { invite_code: inviteCode.trim() },
       })
       setJoinMsg(res.detail)
+      setJoinSuccess(true)
       setInviteCode('')
       await refresh()
     } catch (err: any) {
+      setJoinFieldErrors(getFieldErrors(err))
       setJoinMsg(err?.message ?? 'Join failed')
+      setJoinSuccess(false)
     }
   }
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreateMsg(null)
+    setCreateSuccess(false)
+    setCreateFieldErrors(null)
+
+    const clientErrors: FieldErrors = {}
+    if (!create.name.trim()) clientErrors.name = ['Classroom name is required.']
+    if (!create.description.trim()) clientErrors.description = ['Description is required.']
+    if (Object.keys(clientErrors).length) {
+      setCreateFieldErrors(clientErrors)
+      return
+    }
+
     try {
       const created = await apiJson<Classroom>('/api/v1/classrooms/', {
         method: 'POST',
         body: { name: create.name.trim(), description: create.description.trim(), students: [] },
       })
-      setCreateMsg(`Created "${created.name}" (invite: ${created.invite_code})`)
+      setCreateMsg(`Created "${created.name}" · Invite code: ${created.invite_code}`)
+      setCreateSuccess(true)
       setCreate({ name: '', description: '' })
       await refresh()
     } catch (err: any) {
+      setCreateFieldErrors(getFieldErrors(err))
       setCreateMsg(err?.message ?? 'Create failed')
+      setCreateSuccess(false)
     }
   }
 
@@ -90,42 +122,78 @@ export function ClassroomsPage() {
         <div className="card p-6">
           <div className="text-sm font-semibold text-slate-900">Join a classroom</div>
           <p className="mt-1 text-sm text-slate-500">Enter the invite code provided by your teacher.</p>
-          <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={onJoin}>
-            <input className="input flex-1" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Invite code" />
-            <button className="btn-primary" disabled={!inviteCode.trim()}>
+          <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onJoin}>
+            <div className="flex-1">
+              <input
+                className="input w-full"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="Invite code"
+              />
+              {firstFieldError(joinFieldErrors, 'invite_code') && (
+                <div className="mt-1 text-xs font-medium text-red-600">
+                  {firstFieldError(joinFieldErrors, 'invite_code')}
+                </div>
+              )}
+            </div>
+            <button className="btn-primary shrink-0">
               Join
             </button>
           </form>
-          {joinMsg ? <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800">{joinMsg}</div> : null}
+          {joinMsg && (
+            <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${joinSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+              {joinMsg}
+            </div>
+          )}
         </div>
       ) : (
         <div className="card p-6">
           <div className="text-sm font-semibold text-slate-900">Create a classroom</div>
           <p className="mt-1 text-sm text-slate-500">Students can join using the generated invite code.</p>
           <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={onCreate}>
-            <div className="sm:col-span-1">
+            <div>
               <label className="label">Name</label>
-              <input className="input mt-1" value={create.name} onChange={(e) => setCreate((c) => ({ ...c, name: e.target.value }))} />
+              <input
+                className="input mt-1"
+                value={create.name}
+                onChange={(e) => setCreate((c) => ({ ...c, name: e.target.value }))}
+              />
+              {firstFieldError(createFieldErrors, 'name') && (
+                <div className="mt-1 text-xs font-medium text-red-600">
+                  {firstFieldError(createFieldErrors, 'name')}
+                </div>
+              )}
             </div>
-            <div className="sm:col-span-1">
+            <div>
               <label className="label">Description</label>
               <input
                 className="input mt-1"
                 value={create.description}
                 onChange={(e) => setCreate((c) => ({ ...c, description: e.target.value }))}
               />
+              {firstFieldError(createFieldErrors, 'description') && (
+                <div className="mt-1 text-xs font-medium text-red-600">
+                  {firstFieldError(createFieldErrors, 'description')}
+                </div>
+              )}
             </div>
             <div className="sm:col-span-2">
-              <button className="btn-primary" disabled={!create.name.trim() || !create.description.trim()}>
+              <button className="btn-primary">
                 Create
               </button>
             </div>
           </form>
-          {createMsg ? <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800">{createMsg}</div> : null}
+          {createMsg && (
+            <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${createSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+              {createMsg}
+            </div>
+          )}
         </div>
       )}
 
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {loading ? (

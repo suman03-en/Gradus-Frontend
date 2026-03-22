@@ -4,6 +4,9 @@ import { apiJson, apiFormData } from '../lib/api'
 import type { Task, TaskSubmission, TaskEvaluation } from '../lib/types'
 import { useAuth } from '../state/auth'
 import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES } from '../lib/choices'
+import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
+import { ResourcesPanel } from '../components/ResourcesPanel'
+import { PDFViewerModal } from '../components/PDFViewerModal'
 
 function statusBadge(status: string) {
   if (status === 'published') return 'badge-green'
@@ -28,20 +31,26 @@ export function TaskDetailPage() {
   // Submissions
   const [submissions, setSubmissions] = useState<TaskSubmission[]>([])
   const [subLoading, setSubLoading] = useState(false)
+  const [viewingPdf, setViewingPdf] = useState<{ url: string; title: string } | null>(null)
 
   // Edit mode (teacher)
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState<Partial<Task>>({})
   const [editMsg, setEditMsg] = useState<string | null>(null)
+  const [editSuccess, setEditSuccess] = useState(false)
+  const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors | null>(null)
 
   // File submission (student)
   const [file, setFile] = useState<File | null>(null)
   const [submitMsg, setSubmitMsg] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
+  const [submitFieldErrors, setSubmitFieldErrors] = useState<FieldErrors | null>(null)
 
-  // Evaluation (teacher)
+  // Evaluation (teacher) — per-submission messages
   const [evalForm, setEvalForm] = useState<Record<string, { marks_obtained: string; feedback: string }>>({})
-  const [evalMsg, setEvalMsg] = useState<string | null>(null)
+  const [evalMsgs, setEvalMsgs] = useState<Record<string, { msg: string; success: boolean }>>({})
+  const [evalFieldErrors, setEvalFieldErrors] = useState<Record<string, FieldErrors | null>>({})
 
   // View evaluations
   const [evaluations, setEvaluations] = useState<Record<string, TaskEvaluation>>({})
@@ -101,6 +110,17 @@ export function TaskDetailPage() {
   async function onSaveEdit(e: React.FormEvent) {
     e.preventDefault()
     setEditMsg(null)
+    setEditSuccess(false)
+    setEditFieldErrors(null)
+
+    const clientErrors: FieldErrors = {}
+    if (!editForm.name?.trim()) clientErrors.name = ['Task name is required.']
+    if (!editForm.full_marks && editForm.full_marks !== 0) clientErrors.full_marks = ['Full marks is required.']
+    if (Object.keys(clientErrors).length) {
+      setEditFieldErrors(clientErrors)
+      return
+    }
+
     try {
       await apiJson<Task>(`/api/v1/tasks/${id}/`, {
         method: 'PATCH',
@@ -115,23 +135,33 @@ export function TaskDetailPage() {
         },
       })
       setEditMsg('Task updated successfully.')
+      setEditSuccess(true)
       setEditing(false)
       await fetchTask()
     } catch (e: any) {
+      setEditFieldErrors(getFieldErrors(e))
       setEditMsg(e?.message ?? 'Update failed')
+      setEditSuccess(false)
     }
   }
 
   // ─── Submit File (Student) ──────────────────────────────────
   async function onSubmitFile(e: React.FormEvent) {
     e.preventDefault()
-    if (!file) return
     setSubmitMsg(null)
+    setSubmitSuccess(false)
+    setSubmitFieldErrors(null)
+
+    if (!file) {
+      setSubmitFieldErrors({ uploaded_file: ['Please select a file to submit.'] })
+      return
+    }
+
     setSubmitBusy(true)
     try {
       const fd = new FormData()
       fd.append('uploaded_file', file)
-      
+
       const mySub = submissions.find((s) => s.student === user?.id)
       if (mySub) {
         await apiFormData<TaskSubmission>(`/api/v1/tasks/submissions/${mySub.id}/update`, fd, { method: 'PATCH' })
@@ -140,11 +170,13 @@ export function TaskDetailPage() {
         await apiFormData<TaskSubmission>(`/api/v1/tasks/${id}/submit/`, fd)
         setSubmitMsg('Submission uploaded successfully!')
       }
-      
+      setSubmitSuccess(true)
       setFile(null)
       await fetchSubmissions()
     } catch (e: any) {
+      setSubmitFieldErrors(getFieldErrors(e))
       setSubmitMsg(e?.message ?? 'Submission failed')
+      setSubmitSuccess(false)
     } finally {
       setSubmitBusy(false)
     }
@@ -159,16 +191,29 @@ export function TaskDetailPage() {
   async function onEvaluate(submissionId: string) {
     const form = evalForm[submissionId]
     if (!form) return
-    setEvalMsg(null)
+
+    // Per-submission client validation
+    const clientErrors: FieldErrors = {}
+    if (!form.marks_obtained) clientErrors.marks_obtained = ['Marks are required.']
+    if (!form.feedback?.trim()) clientErrors.feedback = ['Feedback is required.']
+    if (Object.keys(clientErrors).length) {
+      setEvalFieldErrors(prev => ({ ...prev, [submissionId]: clientErrors }))
+      return
+    }
+
+    setEvalFieldErrors(prev => ({ ...prev, [submissionId]: null }))
+    setEvalMsgs(prev => ({ ...prev, [submissionId]: { msg: '', success: false } }))
     try {
       await apiJson<TaskEvaluation>(`/api/v1/tasks/submissions/${submissionId}/evaluate/`, {
         method: 'POST',
         body: { marks_obtained: parseFloat(form.marks_obtained), feedback: form.feedback },
       })
-      setEvalMsg('Evaluation saved!')
+      setEvalMsgs(prev => ({ ...prev, [submissionId]: { msg: 'Evaluation saved!', success: true } }))
       await fetchSubmissions()
     } catch (e: any) {
-      setEvalMsg(e?.message ?? 'Evaluation failed')
+      const fe = getFieldErrors(e)
+      setEvalFieldErrors(prev => ({ ...prev, [submissionId]: fe }))
+      setEvalMsgs(prev => ({ ...prev, [submissionId]: { msg: e?.message ?? 'Evaluation failed', success: false } }))
     }
   }
 
@@ -211,34 +256,85 @@ export function TaskDetailPage() {
               <div className="grid gap-6 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className="label">Name</label>
-                  <input className="input" value={editForm.name ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+                  <input
+                    className="input"
+                    value={editForm.name ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                  {firstFieldError(editFieldErrors, 'name') && (
+                    <div className="mt-1 text-xs font-medium text-red-600">
+                      {firstFieldError(editFieldErrors, 'name')}
+                    </div>
+                  )}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="label">Description</label>
-                  <textarea className="textarea" rows={4} value={editForm.description ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+                  <textarea
+                    className="textarea"
+                    rows={4}
+                    value={editForm.description ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                  {firstFieldError(editFieldErrors, 'description') && (
+                    <div className="mt-1 text-xs font-medium text-red-600">
+                      {firstFieldError(editFieldErrors, 'description')}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="label">Deadline</label>
-                  <input className="input" type="datetime-local" value={(editForm.end_date ?? '').slice(0, 16)} onChange={(e) => setEditForm((f) => ({ ...f, end_date: e.target.value }))} />
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    value={(editForm.end_date ?? '').slice(0, 16)}
+                    onChange={(e) => setEditForm((f) => ({ ...f, end_date: e.target.value }))}
+                  />
+                  {firstFieldError(editFieldErrors, 'end_date') && (
+                    <div className="mt-1 text-xs font-medium text-red-600">
+                      {firstFieldError(editFieldErrors, 'end_date')}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="label">Full Marks</label>
-                  <input className="input" type="number" value={editForm.full_marks ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, full_marks: Number(e.target.value) }))} />
+                  <input
+                    className="input"
+                    type="number"
+                    value={editForm.full_marks ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, full_marks: Number(e.target.value) }))}
+                  />
+                  {firstFieldError(editFieldErrors, 'full_marks') && (
+                    <div className="mt-1 text-xs font-medium text-red-600">
+                      {firstFieldError(editFieldErrors, 'full_marks')}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="label">Status</label>
-                  <select className="input" value={editForm.status ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}>
+                  <select
+                    className="input"
+                    value={editForm.status ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+                  >
                     {TASK_STATUS_CHOICES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="label">Mode</label>
-                  <select className="input" value={editForm.mode ?? ''} onChange={(e) => setEditForm((f) => ({ ...f, mode: e.target.value }))}>
+                  <select
+                    className="input"
+                    value={editForm.mode ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, mode: e.target.value }))}
+                  >
                     {TASK_MODE_CHOICES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
               </div>
-              {editMsg ? <div className="rounded-xl bg-brand-50 p-3 text-sm font-medium text-brand-700">{editMsg}</div> : null}
+              {editMsg && (
+                <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {editMsg}
+                </div>
+              )}
               <div className="flex justify-end pt-4">
                 <button className="btn-primary px-8">Save Changes</button>
               </div>
@@ -287,6 +383,9 @@ export function TaskDetailPage() {
             </div>
           )}
 
+          {/* ─── Resources Panel ──────────────────────── */}
+          {id && <ResourcesPanel contentType="task" objectId={id} />}
+
           {/* ─── Submit File (Student Only) ────────────── */}
           {isStudent && (
             <div className="card p-6">
@@ -301,7 +400,7 @@ export function TaskDetailPage() {
                     <p className="mt-1 text-sm text-slate-500">
                       {mySub ? 'You have already submitted. Upload a new file to update.' : 'Upload a file for this task.'}
                     </p>
-                    
+
                     {isEvaluated ? (
                       <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                         Your submission has been evaluated. You can no longer update it.
@@ -315,6 +414,11 @@ export function TaskDetailPage() {
                             type="file"
                             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                           />
+                          {firstFieldError(submitFieldErrors, 'uploaded_file') && (
+                            <div className="mt-1 text-xs font-medium text-red-600">
+                              {firstFieldError(submitFieldErrors, 'uploaded_file')}
+                            </div>
+                          )}
                         </div>
                         <button className="btn-primary" disabled={!file || submitBusy || isClosed}>
                           {submitBusy ? 'Uploading…' : isClosed ? 'Deadline Passed' : mySub ? 'Update' : 'Submit'}
@@ -324,11 +428,13 @@ export function TaskDetailPage() {
                   </>
                 )
               })()}
-              
+
               {isClosed && <p className="mt-2 text-xs font-medium text-red-500">This task is no longer accepting submissions.</p>}
-              {submitMsg ? (
-                <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800">{submitMsg}</div>
-              ) : null}
+              {submitMsg && (
+                <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${submitSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {submitMsg}
+                </div>
+              )}
             </div>
           )}
 
@@ -355,6 +461,8 @@ export function TaskDetailPage() {
               <div className="mt-4 space-y-4">
                 {submissions.map((sub) => {
                   const ev = evaluations[sub.id]
+                  const evalMsg = evalMsgs[sub.id]
+                  const subEvalErrors = evalFieldErrors[sub.id]
                   return (
                     <div key={sub.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -363,14 +471,24 @@ export function TaskDetailPage() {
                           <div className="mt-1 text-xs text-slate-500">
                             Submitted: {new Date(sub.submitted_at).toLocaleString()}
                           </div>
-                          <a
-                            href={sub.uploaded_file}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 inline-block text-xs font-medium text-brand-600 hover:underline"
-                          >
-                            Download file ↗
-                          </a>
+                          <div className="mt-2 flex items-center gap-3">
+                            {sub.uploaded_file.split('?')[0].toLowerCase().endsWith('.pdf') && (
+                              <button
+                                onClick={() => setViewingPdf({ url: sub.uploaded_file, title: `${sub.student_username || sub.student} - Submission` })}
+                                className="inline-flex items-center justify-center rounded-lg bg-brand-50 border border-brand-200 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 transition-colors"
+                              >
+                                View PDF
+                              </button>
+                            )}
+                            <a
+                              href={sub.uploaded_file}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-block text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline transition-colors"
+                            >
+                              Download ↗
+                            </a>
+                          </div>
                         </div>
                         {ev ? (
                           <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-right">
@@ -403,6 +521,11 @@ export function TaskDetailPage() {
                                   }))
                                 }
                               />
+                              {firstFieldError(subEvalErrors, 'marks_obtained') && (
+                                <div className="mt-1 text-xs font-medium text-red-600">
+                                  {firstFieldError(subEvalErrors, 'marks_obtained')}
+                                </div>
+                              )}
                             </div>
                             <div>
                               <label className="label">Feedback</label>
@@ -417,18 +540,24 @@ export function TaskDetailPage() {
                                 }
                                 placeholder="Great work!"
                               />
+                              {firstFieldError(subEvalErrors, 'feedback') && (
+                                <div className="mt-1 text-xs font-medium text-red-600">
+                                  {firstFieldError(subEvalErrors, 'feedback')}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <button
                             className="btn-primary mt-3"
                             onClick={() => onEvaluate(sub.id)}
-                            disabled={!evalForm[sub.id]?.marks_obtained || !evalForm[sub.id]?.feedback?.trim()}
                           >
                             Submit Evaluation
                           </button>
-                          {evalMsg ? (
-                            <div className="mt-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">{evalMsg}</div>
-                          ) : null}
+                          {evalMsg?.msg && (
+                            <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${evalMsg.success ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                              {evalMsg.msg}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -439,6 +568,14 @@ export function TaskDetailPage() {
           </div>
         </>
       ) : null}
+
+      {viewingPdf && (
+        <PDFViewerModal
+          url={viewingPdf.url}
+          title={viewingPdf.title}
+          onClose={() => setViewingPdf(null)}
+        />
+      )}
     </div>
   )
 }

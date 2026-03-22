@@ -84,6 +84,7 @@ export async function apiJson<T>(
     method,
     headers,
     body: opts?.body === undefined ? undefined : JSON.stringify(opts.body),
+    credentials: 'omit',
   })
 
   const contentType = res.headers.get('content-type') || ''
@@ -119,6 +120,7 @@ export async function apiFormData<T>(
     method,
     headers,
     body: formData,
+    credentials: 'omit',
   })
 
   const contentType = res.headers.get('content-type') || ''

@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+#agent rules
+.agents/skills/*
+
+#apidoc
+apidoc.md
+

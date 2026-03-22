@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../state/auth'
 
 function cx(isActive: boolean) {
@@ -18,15 +18,15 @@ export function AppLayout() {
       <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
         <div className="container-page">
           <div className="flex h-16 items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-white">
+            <Link to="/dashboard" className="flex items-center gap-3 group">
+              <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600 text-white group-hover:bg-brand-700 transition-colors">
                 <span className="text-base font-bold">G</span>
               </div>
               <div className="leading-tight">
-                <div className="text-sm font-bold text-slate-900 tracking-tight">Gradus</div>
+                <div className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-brand-600 transition-colors">Gradus</div>
                 <div className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Internal Marks</div>
               </div>
-            </div>
+            </Link>
 
             <nav className="hidden items-center gap-1 md:flex">
               {user ? (
@@ -60,6 +60,9 @@ export function AppLayout() {
                     <div className="text-xs font-medium text-slate-700">@{user.username}</div>
                     <div className="text-[11px] text-slate-400">{user.email || '—'}</div>
                   </div>
+                  <NavLink to="/profile" className="btn-secondary text-xs md:hidden">
+                    Profile
+                  </NavLink>
                   <button className="btn-secondary text-xs" onClick={logout}>
                     Logout
                   </button>

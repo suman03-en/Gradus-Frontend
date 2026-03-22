@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import type { ApiError } from '../lib/api'
 import { useAuth } from '../state/auth'
+import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -12,17 +13,30 @@ export function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setFieldErrors(null)
+
+    // Client-side required validation
+    const clientErrors: FieldErrors = {}
+    if (!username.trim()) clientErrors.username = ['Username is required.']
+    if (!password) clientErrors.password = ['Password is required.']
+    if (Object.keys(clientErrors).length) {
+      setFieldErrors(clientErrors)
+      return
+    }
+
     setBusy(true)
     try {
       await login(username.trim(), password)
       navigate(redirectTo, { replace: true })
     } catch (err) {
       const e = err as ApiError
+      setFieldErrors(getFieldErrors(err))
       setError(e.message ?? 'Login failed')
     } finally {
       setBusy(false)
@@ -50,14 +64,37 @@ export function LoginPage() {
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <div>
             <label className="label">Username</label>
-            <input className="input mt-1" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+            <input
+              className="input mt-1"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+            />
+            {firstFieldError(fieldErrors, 'username') && (
+              <div className="mt-1 text-xs font-medium text-red-600">
+                {firstFieldError(fieldErrors, 'username')}
+              </div>
+            )}
           </div>
           <div>
             <label className="label">Password</label>
-            <input className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+            <input
+              className="input mt-1"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            {firstFieldError(fieldErrors, 'password') && (
+              <div className="mt-1 text-xs font-medium text-red-600">
+                {firstFieldError(fieldErrors, 'password')}
+              </div>
+            )}
           </div>
 
-          {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+          {error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          ) : null}
 
           <button className="btn-primary w-full" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in'}
