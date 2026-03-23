@@ -25,6 +25,7 @@ export function ResourcesPanel({ contentType, objectId }: Props) {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null)
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors | null>(null)
+  const [showUploadForm, setShowUploadForm] = useState(false)
 
   // Delete
   const [deletingId, setDeletingId] = useState<number | null>(null)
@@ -80,6 +81,7 @@ export function ResourcesPanel({ contentType, objectId }: Props) {
       if (fileInput) fileInput.value = ''
       setUploadMsg('Resource uploaded successfully.')
       setUploadSuccess(true)
+      setShowUploadForm(false)
       await fetchResources()
     } catch (err: any) {
       setFieldErrors(getFieldErrors(err))
@@ -107,23 +109,37 @@ export function ResourcesPanel({ contentType, objectId }: Props) {
     <div className="card p-6 space-y-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <div className="text-sm font-semibold text-slate-900">Resources</div>
+          <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Resources</div>
           <p className="mt-0.5 text-sm text-slate-500">
             Attached files for reference and download.
           </p>
         </div>
-        <button
-          className="btn-secondary text-xs"
-          onClick={fetchResources}
-          disabled={loading}
-        >
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isStudent && (
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => {
+                setShowUploadForm((prev) => !prev)
+                setFieldErrors(null)
+              }}
+            >
+              {showUploadForm ? 'Cancel' : 'Upload Resource'}
+            </button>
+          )}
+          <button
+            className="btn-secondary text-xs"
+            onClick={fetchResources}
+            disabled={loading}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Upload form (teachers only) */}
-      {!isStudent && (
-        <form className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4" onSubmit={onUpload}>
+      {!isStudent && showUploadForm && (
+        <form className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" onSubmit={onUpload}>
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Upload New Resource
           </div>
@@ -190,7 +206,7 @@ export function ResourcesPanel({ contentType, objectId }: Props) {
           No resources attached yet.
         </div>
       ) : (
-        <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden">
+        <ul className="overflow-hidden rounded-xl border border-slate-200 divide-y divide-slate-100">
           {resources.map((r) => (
             <li
               key={r.id}

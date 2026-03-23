@@ -55,7 +55,7 @@ export function UserProfilePage() {
           {/* User info */}
           <div className="card p-6 lg:col-span-2">
             <div className="flex flex-wrap items-center gap-4">
-              <div className="grid h-14 w-14 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white">
+              <div className="grid h-14 w-14 place-items-center rounded-xl bg-brand-700 text-white">
                 <span className="text-2xl font-bold uppercase">{user.first_name[0]}{user.last_name[0]}</span>
               </div>
               <div>
@@ -70,7 +70,7 @@ export function UserProfilePage() {
 
           {/* Role badge */}
           <aside className="card p-6">
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Role</div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Role</div>
             <div className="mt-2">
               <span className={isStudent ? 'badge-brand' : 'badge-green'}>
                 {isStudent ? 'Student' : 'Teacher'}

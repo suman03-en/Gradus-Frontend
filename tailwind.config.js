@@ -6,20 +6,20 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', ...defaultTheme.fontFamily.sans],
+        sans: ['Space Grotesk', ...defaultTheme.fontFamily.sans],
       },
       colors: {
         brand: {
-          50: '#faf5ff',
-          100: '#f3e8ff',
-          200: '#e9d5ff',
-          300: '#d8b4fe',
-          400: '#c084fc',
-          500: '#a855f7',
-          600: '#9333ea',
-          700: '#7e22ce',
-          800: '#6b21a8',
-          900: '#581c87',
+          50: '#eefcf9',
+          100: '#d7f7ef',
+          200: '#aeeedf',
+          300: '#7edfc9',
+          400: '#49c8ad',
+          500: '#23ac92',
+          600: '#178a76',
+          700: '#166f62',
+          800: '#16594f',
+          900: '#154a43',
         },
       },
     },

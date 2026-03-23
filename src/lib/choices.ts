@@ -55,3 +55,8 @@ export const TASK_TYPE_CHOICES = [
   { value: 'lab_report', label: 'Lab Report' },
   { value: 'quiz', label: 'Quiz' },
 ] as const
+
+export const TASK_COMPONENT_CHOICES = [
+  { value: 'theory', label: 'Theory' },
+  { value: 'lab', label: 'Lab' },
+] as const

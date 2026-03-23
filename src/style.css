@@ -1,49 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-main: #f5f7fb;
+    --bg-soft: #eef2f8;
+    --ink-main: #0f172a;
+  }
+
   html,
   body {
     height: 100%;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    background: linear-gradient(180deg, var(--bg-main) 0%, var(--bg-soft) 100%);
+    @apply text-slate-900 antialiased;
+  }
+
+  #root {
+    @apply min-h-screen;
   }
 }
 
 @layer components {
   .container-page {
-    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-10;
   }
 
   .card {
-    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-all duration-200;
+    @apply rounded-2xl border border-slate-200/90 bg-white shadow-sm transition-all duration-200;
   }
 
   .card-premium {
-    @apply relative overflow-hidden rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm;
+    @apply relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 active:scale-[0.98];
   }
 
   .btn-primary {
-    @apply btn bg-gradient-to-r from-brand-600 to-brand-700 text-white shadow-sm hover:from-brand-700 hover:to-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2;
+    @apply btn bg-brand-700 text-white hover:bg-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2;
   }
 
   .btn-secondary {
-    @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200;
+    @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200;
   }
 
   .btn-danger {
-    @apply btn bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 focus:outline-none focus:ring-2 focus:ring-red-200;
+    @apply btn border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200;
   }
 
   .input {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 placeholder:text-slate-400;
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 placeholder:text-slate-400;
   }
 
   .textarea {
@@ -51,11 +64,11 @@
   }
 
   .label {
-    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500;
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500;
   }
 
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-tight;
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-tight;
   }
 
   .badge-brand {
@@ -79,10 +92,42 @@
   }
 
   .glass-panel {
-    @apply bg-white/80 backdrop-blur-lg border border-slate-200/60;
+    @apply border border-slate-200 bg-white;
   }
 
   .nav-link-active {
     @apply relative text-brand-700 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-brand-600;
+  }
+
+  .surface-rise {
+    animation: surface-rise 240ms ease-out both;
+  }
+
+  .stagger-in {
+    animation: surface-rise 260ms ease-out both;
+  }
+
+  .stagger-in:nth-child(2) {
+    animation-delay: 80ms;
+  }
+
+  .stagger-in:nth-child(3) {
+    animation-delay: 140ms;
+  }
+
+  .stagger-in:nth-child(4) {
+    animation-delay: 180ms;
+  }
+}
+
+@keyframes surface-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

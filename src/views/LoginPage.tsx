@@ -44,22 +44,30 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-8 md:grid-cols-2 md:items-center">
-      <div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-700">
-          Token-based auth
-          <span className="h-1 w-1 rounded-full bg-brand-400" />
-          Bearer protected
+    <div className="mx-auto grid w-full max-w-6xl gap-8 md:grid-cols-[1.05fr_1fr] md:items-stretch">
+      <div className="card-premium surface-rise flex flex-col justify-between gap-6 p-7 md:p-8">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/75 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700">
+            Secure Access
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
+            Token Auth
+          </div>
+          <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-900 md:text-4xl">Welcome Back to Gradus</h1>
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-slate-700">
+            Continue from where you left off. Track deadlines, evaluate records, and monitor gradebook updates in one place.
+          </p>
         </div>
-        <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900">Welcome back</h1>
-        <p className="mt-2 max-w-prose text-sm text-slate-600">
-          Sign in to manage classrooms and track internal marks.
-        </p>
+
+        <div className="grid gap-3">
+          <div className="rounded-2xl border border-brand-100 bg-white/70 p-4 text-sm text-slate-700">Component-aware gradebook tracking for theory and lab.</div>
+          <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700">Role-based dashboards for teachers and students.</div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-slate-700">Export-ready reports aligned with classroom records.</div>
+        </div>
       </div>
 
-      <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-900">Login</h2>
-        <p className="mt-1 text-sm text-slate-600">Use your username and password.</p>
+      <div className="card surface-rise p-6 md:p-7">
+        <h2 className="text-xl font-black tracking-tight text-slate-900">Sign In</h2>
+        <p className="mt-1 text-sm text-slate-600">Use your username and password to continue.</p>
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <div>
@@ -101,7 +109,7 @@ export function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
           <Link className="font-semibold text-brand-700 hover:underline" to="/forgot-password">
             Forgot password?
           </Link>

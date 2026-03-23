@@ -132,6 +132,41 @@ export async function apiFormData<T>(
   return payload as T
 }
 
+export async function apiBlob(
+  path: string,
+  opts?: {
+    method?: string
+    headers?: Record<string, string>
+  },
+): Promise<{ blob: Blob; contentDisposition: string | null }> {
+  const method = (opts?.method ?? 'GET').toUpperCase()
+  const headers: Record<string, string> = {
+    ...(opts?.headers ?? {}),
+  }
+
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Token ${token}`
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    credentials: 'omit',
+  })
+
+  if (!res.ok) {
+    const contentType = res.headers.get('content-type') || ''
+    const isJson = contentType.includes('application/json')
+    const payload = isJson ? await res.json().catch(() => null) : await res.text().catch(() => '')
+    throw buildError(res, payload)
+  }
+
+  const blob = await res.blob()
+  const contentDisposition = res.headers.get('content-disposition')
+  return { blob, contentDisposition }
+}
+
 export class BuildError extends Error implements ApiError {
   status: number
   message: string

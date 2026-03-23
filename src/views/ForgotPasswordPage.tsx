@@ -41,9 +41,9 @@ export function ForgotPasswordPage() {
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-8 md:grid-cols-2 md:items-center">
       <div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white px-3 py-1 text-xs font-semibold text-brand-700">
+        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
           Step 1 of 3
-          <span className="h-1 w-1 rounded-full bg-brand-400" />
+          <span className="h-1 w-1 rounded-full bg-slate-400" />
           Password Reset
         </div>
         <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900">Forgot your password?</h1>
