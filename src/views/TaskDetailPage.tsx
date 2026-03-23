@@ -60,7 +60,7 @@ export function TaskDetailPage() {
   const [bulkErrors, setBulkErrors] = useState<string[]>([])
 
   // Direct Student Evaluation (teacher, for students without records)
-  const [directStudentId, setDirectStudentId] = useState('')
+  const [directRollNo, setDirectRollNo] = useState('')
   const [directMarks, setDirectMarks] = useState('')
   const [directFeedback, setDirectFeedback] = useState('')
   const [directMsg, setDirectMsg] = useState<string | null>(null)
@@ -266,7 +266,7 @@ export function TaskDetailPage() {
     setDirectFieldErrors(null)
 
     const clientErrors: FieldErrors = {}
-    if (!directStudentId.trim()) clientErrors.student_id = ['Student ID is required.']
+    if (!directRollNo.trim()) clientErrors.roll_no = ['Roll number is required.']
     if (!directMarks) clientErrors.marks_obtained = ['Marks are required.']
     if (!directFeedback.trim()) clientErrors.feedback = ['Feedback is required.']
     if (Object.keys(clientErrors).length) {
@@ -275,7 +275,7 @@ export function TaskDetailPage() {
     }
 
     try {
-      await apiJson(`/api/v1/tasks/${id}/evaluate-student/${directStudentId.trim()}/`, {
+      await apiJson(`/api/v1/tasks/${id}/evaluate-student/${directRollNo.trim()}/`, {
         method: 'POST',
         body: {
           marks_obtained: parseFloat(directMarks),
@@ -284,7 +284,7 @@ export function TaskDetailPage() {
       })
       setDirectMsg('Student evaluated successfully.')
       setDirectSuccess(true)
-      setDirectStudentId('')
+      setDirectRollNo('')
       setDirectMarks('')
       setDirectFeedback('')
       await fetchRecords()
@@ -574,20 +574,20 @@ export function TaskDetailPage() {
             <div className="card p-6">
               <div className="text-sm font-semibold text-slate-900">Evaluate Student Directly</div>
               <p className="mt-1 text-sm text-slate-500">
-                Grade a student manually by their Student ID — useful for offline tasks where no submission exists.
+                Grade a student manually by their Roll No — useful for offline tasks where no submission exists.
               </p>
               <form className="mt-4 grid gap-4 sm:grid-cols-3" onSubmit={onDirectEvaluate}>
                 <div>
-                  <label className="label">Student ID</label>
+                  <label className="label">Roll No</label>
                   <input
                     className="input mt-1"
-                    value={directStudentId}
-                    onChange={(e) => setDirectStudentId(e.target.value)}
-                    placeholder="UUID of student"
+                    value={directRollNo}
+                    onChange={(e) => setDirectRollNo(e.target.value)}
+                    placeholder="e.g. THA079BEI042"
                   />
-                  {firstFieldError(directFieldErrors, 'student_id') && (
+                  {firstFieldError(directFieldErrors, 'roll_no') && (
                     <div className="mt-1 text-xs font-medium text-red-600">
-                      {firstFieldError(directFieldErrors, 'student_id')}
+                      {firstFieldError(directFieldErrors, 'roll_no')}
                     </div>
                   )}
                 </div>
