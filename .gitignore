@@ -24,8 +24,10 @@ dist-ssr
 *.sw?
 
 #agent rules
-.agents/skills/*
-
+.agents/*
 #apidoc
 apidoc.md
+
+#futureplans
+futureplans.md
 

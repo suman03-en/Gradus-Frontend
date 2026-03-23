@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../state/auth'
 import { apiJson } from '../lib/api'
-import type { Task, Classroom, TaskSubmission } from '../lib/types'
+import type { Task, Classroom, TaskRecord } from '../lib/types'
 
 export function DashboardPage() {
   const { user } = useAuth()
@@ -10,7 +10,7 @@ export function DashboardPage() {
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [deadlines, setDeadlines] = useState<Task[]>([])
-  const [pendingEvals, setPendingEvals] = useState<{ task: Task; submission: TaskSubmission }[]>([])
+  const [pendingEvals, setPendingEvals] = useState<{ task: Task; record: TaskRecord }[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchDashboardData = useCallback(async () => {
@@ -33,17 +33,15 @@ export function DashboardPage() {
           .slice(0, 3)
         setDeadlines(upcoming)
       } else {
-        const pending: { task: Task; submission: TaskSubmission }[] = []
+        const pending: { task: Task; record: TaskRecord }[] = []
         for (const c of cls) {
           try {
             const tasks = await apiJson<Task[]>(`/api/v1/classrooms/${c.id}/tasks/`)
             for (const t of tasks) {
-              const subs = await apiJson<TaskSubmission[]>(`/api/v1/tasks/${t.id}/submit/`)
-              for (const s of subs) {
-                try {
-                  await apiJson(`/api/v1/tasks/submissions/${s.id}/`)
-                } catch {
-                  pending.push({ task: t, submission: s })
+              const records = await apiJson<TaskRecord[]>(`/api/v1/tasks/${t.id}/submit/`)
+              for (const r of records) {
+                if (!r.is_evaluated) {
+                  pending.push({ task: t, record: r })
                 }
               }
             }
@@ -117,10 +115,10 @@ export function DashboardPage() {
                     <Link key={idx} to={`/tasks/${item.task.id}`} className="card flex items-center justify-between p-5 group hover:border-brand-200">
                       <div>
                         <div className="text-sm font-semibold text-slate-900 group-hover:text-brand-600 transition-colors">
-                          {item.submission.student} — {item.task.name}
+                          {item.record.student_username || item.record.student} — {item.task.name}
                         </div>
                         <div className="text-xs text-slate-500 mt-1">
-                          Submitted: {new Date(item.submission.submitted_at).toLocaleDateString()}
+                          Submitted: {new Date(item.record.submitted_at).toLocaleDateString()}
                         </div>
                       </div>
                       <span className="badge-brand">Needs Review</span>

@@ -48,18 +48,17 @@ export type Task = {
   task_type: string
 }
 
-export type TaskSubmission = {
+export type TaskRecord = {
   id: string
   task: string
   student: string
   student_username?: string
-  uploaded_file: string
+  uploaded_file: string | null
   submitted_at: string
-}
-
-export type TaskEvaluation = {
-  marks_obtained: number
+  marks_obtained: number | null
   feedback: string
+  evaluated_at: string | null
+  is_evaluated: boolean
 }
 
 export type GradebookData = {
