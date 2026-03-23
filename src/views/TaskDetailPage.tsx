@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { apiJson, apiFormData } from '../lib/api'
-import type { Task, TaskSubmission, TaskEvaluation } from '../lib/types'
+import type { Task, TaskRecord } from '../lib/types'
 import { useAuth } from '../state/auth'
 import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES } from '../lib/choices'
 import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
@@ -28,8 +28,8 @@ export function TaskDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Submissions
-  const [submissions, setSubmissions] = useState<TaskSubmission[]>([])
+  // Records
+  const [records, setRecords] = useState<TaskRecord[]>([])
   const [subLoading, setSubLoading] = useState(false)
   const [viewingPdf, setViewingPdf] = useState<{ url: string; title: string } | null>(null)
 
@@ -52,9 +52,24 @@ export function TaskDetailPage() {
   const [evalMsgs, setEvalMsgs] = useState<Record<string, { msg: string; success: boolean }>>({})
   const [evalFieldErrors, setEvalFieldErrors] = useState<Record<string, FieldErrors | null>>({})
 
-  // View evaluations
-  const [evaluations, setEvaluations] = useState<Record<string, TaskEvaluation>>({})
+  // Bulk CSV Evaluation (teacher, offline tasks)
+  const [bulkFile, setBulkFile] = useState<File | null>(null)
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
+  const [bulkSuccess, setBulkSuccess] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkErrors, setBulkErrors] = useState<string[]>([])
 
+  // Direct Student Evaluation (teacher, for students without records)
+  const [directStudentId, setDirectStudentId] = useState('')
+  const [directMarks, setDirectMarks] = useState('')
+  const [directFeedback, setDirectFeedback] = useState('')
+  const [directMsg, setDirectMsg] = useState<string | null>(null)
+  const [directSuccess, setDirectSuccess] = useState(false)
+  const [directFieldErrors, setDirectFieldErrors] = useState<FieldErrors | null>(null)
+
+  // Record Detail Modal
+  const [detailRecord, setDetailRecord] = useState<TaskRecord | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const fetchTask = useCallback(async () => {
     setError(null)
     setLoading(true)
@@ -69,22 +84,13 @@ export function TaskDetailPage() {
     }
   }, [id])
 
-  const fetchSubmissions = useCallback(async () => {
+  const fetchRecords = useCallback(async () => {
     setSubLoading(true)
     try {
-      const data = await apiJson<TaskSubmission[]>(`/api/v1/tasks/${id}/submit/`)
-      setSubmissions(data)
-      // Fetch evaluations for each submission
-      for (const sub of data) {
-        try {
-          const evalData = await apiJson<TaskEvaluation>(`/api/v1/tasks/submissions/${sub.id}/`)
-          setEvaluations((prev) => ({ ...prev, [sub.id]: evalData }))
-        } catch {
-          // No evaluation yet
-        }
-      }
+      const data = await apiJson<TaskRecord[]>(`/api/v1/tasks/${id}/submit/`)
+      setRecords(data)
     } catch {
-      // Could be no submissions
+      // Could be no records
     } finally {
       setSubLoading(false)
     }
@@ -92,8 +98,8 @@ export function TaskDetailPage() {
 
   useEffect(() => {
     fetchTask()
-    fetchSubmissions()
-  }, [fetchTask, fetchSubmissions])
+    fetchRecords()
+  }, [fetchTask, fetchRecords])
 
   // ─── Delete Task (Teacher) ──────────────────────────────────
   async function onDelete() {
@@ -162,17 +168,17 @@ export function TaskDetailPage() {
       const fd = new FormData()
       fd.append('uploaded_file', file)
 
-      const mySub = submissions.find((s) => s.student === user?.id)
-      if (mySub) {
-        await apiFormData<TaskSubmission>(`/api/v1/tasks/submissions/${mySub.id}/update`, fd, { method: 'PATCH' })
+      const myRecord = records.find((s) => s.student === user?.id)
+      if (myRecord) {
+        await apiFormData<TaskRecord>(`/api/v1/tasks/records/${myRecord.id}/update`, fd, { method: 'PATCH' })
         setSubmitMsg('Submission updated successfully!')
       } else {
-        await apiFormData<TaskSubmission>(`/api/v1/tasks/${id}/submit/`, fd)
+        await apiFormData<TaskRecord>(`/api/v1/tasks/${id}/submit/`, fd)
         setSubmitMsg('Submission uploaded successfully!')
       }
       setSubmitSuccess(true)
       setFile(null)
-      await fetchSubmissions()
+      await fetchRecords()
     } catch (e: any) {
       setSubmitFieldErrors(getFieldErrors(e))
       setSubmitMsg(e?.message ?? 'Submission failed')
@@ -204,16 +210,101 @@ export function TaskDetailPage() {
     setEvalFieldErrors(prev => ({ ...prev, [submissionId]: null }))
     setEvalMsgs(prev => ({ ...prev, [submissionId]: { msg: '', success: false } }))
     try {
-      await apiJson<TaskEvaluation>(`/api/v1/tasks/submissions/${submissionId}/evaluate/`, {
-        method: 'POST',
+      await apiJson<TaskRecord>(`/api/v1/tasks/records/${submissionId}/evaluate/`, {
+        method: 'PATCH',
         body: { marks_obtained: parseFloat(form.marks_obtained), feedback: form.feedback },
       })
       setEvalMsgs(prev => ({ ...prev, [submissionId]: { msg: 'Evaluation saved!', success: true } }))
-      await fetchSubmissions()
+      await fetchRecords()
     } catch (e: any) {
       const fe = getFieldErrors(e)
       setEvalFieldErrors(prev => ({ ...prev, [submissionId]: fe }))
       setEvalMsgs(prev => ({ ...prev, [submissionId]: { msg: e?.message ?? 'Evaluation failed', success: false } }))
+    }
+  }
+
+  // ─── Bulk CSV Evaluation (Teacher, Offline) ────────────────
+  async function onBulkEvaluate(e: React.FormEvent) {
+    e.preventDefault()
+    setBulkMsg(null)
+    setBulkSuccess(false)
+    setBulkErrors([])
+
+    if (!bulkFile) {
+      setBulkMsg('Please select a CSV file.')
+      return
+    }
+
+    setBulkBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', bulkFile)
+      const res = await apiFormData<{ success: number; errors: string[] }>(
+        `/api/v1/tasks/${id}/bulk-evaluate/`,
+        fd,
+      )
+      setBulkMsg(`Successfully evaluated ${res.success} student(s).`)
+      setBulkSuccess(true)
+      setBulkErrors(res.errors ?? [])
+      setBulkFile(null)
+      const fileInput = document.getElementById('bulk-csv-input') as HTMLInputElement | null
+      if (fileInput) fileInput.value = ''
+      await fetchRecords()
+    } catch (e: any) {
+      setBulkMsg(e?.message ?? 'Bulk evaluation failed')
+      setBulkSuccess(false)
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  // ─── Direct Student Evaluation (Teacher) ───────────────────
+  async function onDirectEvaluate(e: React.FormEvent) {
+    e.preventDefault()
+    setDirectMsg(null)
+    setDirectSuccess(false)
+    setDirectFieldErrors(null)
+
+    const clientErrors: FieldErrors = {}
+    if (!directStudentId.trim()) clientErrors.student_id = ['Student ID is required.']
+    if (!directMarks) clientErrors.marks_obtained = ['Marks are required.']
+    if (!directFeedback.trim()) clientErrors.feedback = ['Feedback is required.']
+    if (Object.keys(clientErrors).length) {
+      setDirectFieldErrors(clientErrors)
+      return
+    }
+
+    try {
+      await apiJson(`/api/v1/tasks/${id}/evaluate-student/${directStudentId.trim()}/`, {
+        method: 'POST',
+        body: {
+          marks_obtained: parseFloat(directMarks),
+          feedback: directFeedback.trim(),
+        },
+      })
+      setDirectMsg('Student evaluated successfully.')
+      setDirectSuccess(true)
+      setDirectStudentId('')
+      setDirectMarks('')
+      setDirectFeedback('')
+      await fetchRecords()
+    } catch (e: any) {
+      setDirectFieldErrors(getFieldErrors(e))
+      setDirectMsg(e?.message ?? 'Evaluation failed')
+      setDirectSuccess(false)
+    }
+  }
+
+  // ─── View Record Detail ────────────────────────────────────
+  async function onViewRecordDetail(recordId: string) {
+    setDetailLoading(true)
+    try {
+      const data = await apiJson<TaskRecord>(`/api/v1/tasks/records/${recordId}/`)
+      setDetailRecord(data)
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to load record details')
+    } finally {
+      setDetailLoading(false)
     }
   }
 
@@ -390,15 +481,15 @@ export function TaskDetailPage() {
           {isStudent && (
             <div className="card p-6">
               {(() => {
-                const mySub = submissions.find((s) => s.student === user?.id)
-                const isEvaluated = mySub && evaluations[mySub.id]
+                const myRecord = records.find((s) => s.student === user?.id)
+                const isEvaluated = myRecord?.is_evaluated || false
                 return (
                   <>
                     <div className="text-sm font-semibold text-slate-900">
-                      {mySub ? 'Update Your Submission' : 'Submit Your Work'}
+                      {myRecord ? 'Update Your Submission' : 'Submit Your Work'}
                     </div>
                     <p className="mt-1 text-sm text-slate-500">
-                      {mySub ? 'You have already submitted. Upload a new file to update.' : 'Upload a file for this task.'}
+                      {myRecord ? 'You have already submitted. Upload a new file to update.' : 'Upload a file for this task.'}
                     </p>
 
                     {isEvaluated ? (
@@ -421,7 +512,7 @@ export function TaskDetailPage() {
                           )}
                         </div>
                         <button className="btn-primary" disabled={!file || submitBusy || isClosed}>
-                          {submitBusy ? 'Uploading…' : isClosed ? 'Deadline Passed' : mySub ? 'Update' : 'Submit'}
+                          {submitBusy ? 'Uploading…' : isClosed ? 'Deadline Passed' : myRecord ? 'Update' : 'Submit'}
                         </button>
                       </form>
                     )}
@@ -438,13 +529,117 @@ export function TaskDetailPage() {
             </div>
           )}
 
-          {/* ─── Submissions List ──────────────────────── */}
+          {/* ─── Bulk CSV Evaluation (Teacher, Offline tasks only) ──── */}
+          {!isStudent && task.mode === 'offline' && (
+            <div className="card p-6">
+              <div className="text-sm font-semibold text-slate-900">Bulk Evaluate (CSV Upload)</div>
+              <p className="mt-1 text-sm text-slate-500">
+                Upload a CSV file with columns: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-mono">Roll No, Marks, Feedback</code>
+              </p>
+              <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onBulkEvaluate}>
+                <div className="flex-1">
+                  <label className="label">CSV File</label>
+                  <input
+                    id="bulk-csv-input"
+                    className="input mt-1"
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+                <button className="btn-primary shrink-0" disabled={!bulkFile || bulkBusy}>
+                  {bulkBusy ? 'Uploading…' : 'Upload & Evaluate'}
+                </button>
+              </form>
+              {bulkMsg && (
+                <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${bulkSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {bulkMsg}
+                </div>
+              )}
+              {bulkErrors.length > 0 && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <div className="text-xs font-semibold text-amber-800 mb-1">Errors ({bulkErrors.length}):</div>
+                  <ul className="list-disc list-inside text-xs text-amber-700 space-y-0.5">
+                    {bulkErrors.map((err, idx) => (
+                      <li key={idx}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Direct Student Evaluation (Teacher Only) ───── */}
+          {!isStudent && (
+            <div className="card p-6">
+              <div className="text-sm font-semibold text-slate-900">Evaluate Student Directly</div>
+              <p className="mt-1 text-sm text-slate-500">
+                Grade a student manually by their Student ID — useful for offline tasks where no submission exists.
+              </p>
+              <form className="mt-4 grid gap-4 sm:grid-cols-3" onSubmit={onDirectEvaluate}>
+                <div>
+                  <label className="label">Student ID</label>
+                  <input
+                    className="input mt-1"
+                    value={directStudentId}
+                    onChange={(e) => setDirectStudentId(e.target.value)}
+                    placeholder="UUID of student"
+                  />
+                  {firstFieldError(directFieldErrors, 'student_id') && (
+                    <div className="mt-1 text-xs font-medium text-red-600">
+                      {firstFieldError(directFieldErrors, 'student_id')}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="label">Marks ({task.full_marks} max)</label>
+                  <input
+                    className="input mt-1"
+                    type="number"
+                    min={0}
+                    max={task.full_marks}
+                    value={directMarks}
+                    onChange={(e) => setDirectMarks(e.target.value)}
+                  />
+                  {firstFieldError(directFieldErrors, 'marks_obtained') && (
+                    <div className="mt-1 text-xs font-medium text-red-600">
+                      {firstFieldError(directFieldErrors, 'marks_obtained')}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="label">Feedback</label>
+                  <input
+                    className="input mt-1"
+                    value={directFeedback}
+                    onChange={(e) => setDirectFeedback(e.target.value)}
+                    placeholder="Great work!"
+                  />
+                  {firstFieldError(directFieldErrors, 'feedback') && (
+                    <div className="mt-1 text-xs font-medium text-red-600">
+                      {firstFieldError(directFieldErrors, 'feedback')}
+                    </div>
+                  )}
+                </div>
+                <div className="sm:col-span-3">
+                  <button className="btn-primary">Evaluate</button>
+                </div>
+              </form>
+              {directMsg && (
+                <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${directSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {directMsg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Records List ──────────────────────── */}
           <div className="card p-6">
             <div className="flex items-center justify-between gap-4">
               <div className="text-sm font-semibold text-slate-900">
-                Submissions {submissions.length > 0 && <span className="text-slate-400">({submissions.length})</span>}
+                Submissions {records.length > 0 && <span className="text-slate-400">({records.length})</span>}
               </div>
-              <button className="btn-secondary text-xs" onClick={fetchSubmissions} disabled={subLoading}>
+              <button className="btn-secondary text-xs" onClick={fetchRecords} disabled={subLoading}>
                 {subLoading ? 'Loading…' : 'Refresh'}
               </button>
             </div>
@@ -455,46 +650,55 @@ export function TaskDetailPage() {
                   <div key={i} className="h-12 animate-pulse rounded-xl bg-slate-100" />
                 ))}
               </div>
-            ) : submissions.length === 0 ? (
+            ) : records.length === 0 ? (
               <div className="mt-4 text-sm text-slate-500">No submissions yet.</div>
             ) : (
               <div className="mt-4 space-y-4">
-                {submissions.map((sub) => {
-                  const ev = evaluations[sub.id]
-                  const evalMsg = evalMsgs[sub.id]
-                  const subEvalErrors = evalFieldErrors[sub.id]
+                {records.map((record) => {
+                  const ev = record.is_evaluated
+                  const evalMsg = evalMsgs[record.id]
+                  const subEvalErrors = evalFieldErrors[record.id]
                   return (
-                    <div key={sub.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div key={record.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium text-slate-900">{sub.student_username || sub.student}</div>
+                          <div className="text-sm font-medium text-slate-900">{record.student_username || record.student}</div>
                           <div className="mt-1 text-xs text-slate-500">
-                            Submitted: {new Date(sub.submitted_at).toLocaleString()}
+                            Submitted: {new Date(record.submitted_at).toLocaleString()}
                           </div>
                           <div className="mt-2 flex items-center gap-3">
-                            {sub.uploaded_file.split('?')[0].toLowerCase().endsWith('.pdf') && (
+                            <button
+                              onClick={() => onViewRecordDetail(record.id)}
+                              disabled={detailLoading}
+                              className="inline-flex items-center justify-center rounded-lg bg-slate-100 border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+                            >
+                              View Details
+                            </button>
+                            {record.uploaded_file && record.uploaded_file.split('?')[0].toLowerCase().endsWith('.pdf') && (
                               <button
-                                onClick={() => setViewingPdf({ url: sub.uploaded_file, title: `${sub.student_username || sub.student} - Submission` })}
+                                onClick={() => setViewingPdf({ url: record.uploaded_file as string, title: `${record.student_username || record.student} - Submission` })}
                                 className="inline-flex items-center justify-center rounded-lg bg-brand-50 border border-brand-200 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 transition-colors"
                               >
                                 View PDF
                               </button>
                             )}
-                            <a
-                              href={sub.uploaded_file}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-block text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline transition-colors"
-                            >
-                              Download ↗
-                            </a>
+                            {record.uploaded_file && (
+                              <a
+                                href={record.uploaded_file}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-block text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline transition-colors"
+                              >
+                                Download ↗
+                              </a>
+                            )}
                           </div>
                         </div>
                         {ev ? (
                           <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-right">
                             <div className="text-xs text-emerald-600 font-medium">Evaluated</div>
-                            <div className="text-lg font-bold text-emerald-800">{ev.marks_obtained}/{task.full_marks}</div>
-                            <div className="mt-1 text-xs text-slate-600">{ev.feedback}</div>
+                            <div className="text-lg font-bold text-emerald-800">{record.marks_obtained}/{task.full_marks}</div>
+                            <div className="mt-1 text-xs text-slate-600">{record.feedback}</div>
                           </div>
                         ) : (
                           <span className="badge-amber">Pending</span>
@@ -513,11 +717,11 @@ export function TaskDetailPage() {
                                 type="number"
                                 min={0}
                                 max={task.full_marks}
-                                value={evalForm[sub.id]?.marks_obtained ?? ''}
+                                value={evalForm[record.id]?.marks_obtained ?? ''}
                                 onChange={(e) =>
                                   setEvalForm((f) => ({
                                     ...f,
-                                    [sub.id]: { ...f[sub.id], marks_obtained: e.target.value, feedback: f[sub.id]?.feedback ?? '' },
+                                    [record.id]: { ...f[record.id], marks_obtained: e.target.value, feedback: f[record.id]?.feedback ?? '' },
                                   }))
                                 }
                               />
@@ -531,11 +735,11 @@ export function TaskDetailPage() {
                               <label className="label">Feedback</label>
                               <input
                                 className="input mt-1"
-                                value={evalForm[sub.id]?.feedback ?? ''}
+                                value={evalForm[record.id]?.feedback ?? ''}
                                 onChange={(e) =>
                                   setEvalForm((f) => ({
                                     ...f,
-                                    [sub.id]: { ...f[sub.id], feedback: e.target.value, marks_obtained: f[sub.id]?.marks_obtained ?? '' },
+                                    [record.id]: { ...f[record.id], feedback: e.target.value, marks_obtained: f[record.id]?.marks_obtained ?? '' },
                                   }))
                                 }
                                 placeholder="Great work!"
@@ -549,7 +753,7 @@ export function TaskDetailPage() {
                           </div>
                           <button
                             className="btn-primary mt-3"
-                            onClick={() => onEvaluate(sub.id)}
+                            onClick={() => onEvaluate(record.id)}
                           >
                             Submit Evaluation
                           </button>
@@ -575,6 +779,99 @@ export function TaskDetailPage() {
           title={viewingPdf.title}
           onClose={() => setViewingPdf(null)}
         />
+      )}
+
+      {/* ─── Record Detail Modal ────────────────────── */}
+      {detailRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <h3 className="text-base font-bold text-slate-900">Record Details</h3>
+              <button
+                onClick={() => setDetailRecord(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <dl className="grid gap-4 sm:grid-cols-2 text-sm">
+                <div>
+                  <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Student</dt>
+                  <dd className="mt-1 font-medium text-slate-900">{detailRecord.student_username || detailRecord.student}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Submitted At</dt>
+                  <dd className="mt-1 font-medium text-slate-900">{new Date(detailRecord.submitted_at).toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Status</dt>
+                  <dd className="mt-1">
+                    {detailRecord.is_evaluated ? (
+                      <span className="badge-green">Evaluated</span>
+                    ) : (
+                      <span className="badge-amber">Pending</span>
+                    )}
+                  </dd>
+                </div>
+                {detailRecord.is_evaluated && (
+                  <>
+                    <div>
+                      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Marks</dt>
+                      <dd className="mt-1 text-lg font-bold text-brand-700">
+                        {detailRecord.marks_obtained}/{task?.full_marks}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Feedback</dt>
+                      <dd className="mt-1 text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 rounded-xl border border-slate-100 px-4 py-3">
+                        {detailRecord.feedback || '—'}
+                      </dd>
+                    </div>
+                    {detailRecord.evaluated_at && (
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Evaluated At</dt>
+                        <dd className="mt-1 font-medium text-slate-900">{new Date(detailRecord.evaluated_at).toLocaleString()}</dd>
+                      </div>
+                    )}
+                  </>
+                )}
+              </dl>
+              {detailRecord.uploaded_file && (
+                <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+                  <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Submission File</dt>
+                  <div className="flex items-center gap-2">
+                    {detailRecord.uploaded_file.split('?')[0].toLowerCase().endsWith('.pdf') && (
+                      <button
+                        onClick={() => {
+                          setDetailRecord(null)
+                          setViewingPdf({
+                            url: detailRecord.uploaded_file as string,
+                            title: `${detailRecord.student_username || detailRecord.student} - Submission`,
+                          })
+                        }}
+                        className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 transition-colors"
+                      >
+                        View PDF
+                      </button>
+                    )}
+                    <a
+                      href={detailRecord.uploaded_file}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      Download ↗
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="border-t border-slate-100 px-6 py-4 flex justify-end">
+              <button className="btn-secondary" onClick={() => setDetailRecord(null)}>Close</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
