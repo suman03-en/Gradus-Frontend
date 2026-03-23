@@ -15,7 +15,7 @@ export function AppLayout() {
   const brandHref = user ? '/dashboard' : '/'
 
   return (
-    <div className="min-h-screen text-slate-900">
+    <div className="min-h-screen flex flex-col text-slate-900">
       <header className="sticky top-0 z-20 border-b border-slate-200/90 bg-white/95 backdrop-blur-sm">
         <div className="container-page">
           <div className="flex h-16 items-center justify-between gap-2 sm:gap-4">
@@ -109,7 +109,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="container-page surface-rise py-6 md:py-10">
+      <main className="flex-1 container-page surface-rise py-6 md:py-10">
         <Outlet />
       </main>
 
