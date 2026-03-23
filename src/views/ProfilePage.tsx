@@ -62,8 +62,8 @@ export function ProfilePage() {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">My Profile</h1>
-        <p className="mt-1 text-sm text-slate-500">Manage your Gradus account</p>
+        <h1 className="text-3xl font-black tracking-tight text-slate-900">My Profile</h1>
+        <p className="mt-1 text-sm text-slate-600">Manage your Gradus account and academic details.</p>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
@@ -151,15 +151,15 @@ export function ProfilePage() {
           </div>
 
           <aside>
-            <div className="card p-6 bg-gradient-to-br from-brand-600 to-brand-700 text-white">
-              <div className="text-xs font-medium uppercase tracking-wider text-brand-200 mb-4">Role</div>
+            <div className="card p-6">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 mb-4">Role</div>
               <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-xl bg-white text-brand-700 grid place-items-center text-xl font-bold">
+                <div className="grid h-12 w-12 place-items-center rounded-xl bg-brand-700 text-xl font-bold text-white">
                   {isStudent ? 'S' : 'T'}
                 </div>
                 <div>
-                  <div className="font-bold text-white text-base">{isStudent ? 'Student' : 'Teacher'}</div>
-                  <div className="text-xs text-brand-200 mt-0.5">Gradus Account</div>
+                  <div className="text-base font-bold text-slate-900">{isStudent ? 'Student' : 'Teacher'}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">Gradus Account</div>
                 </div>
               </div>
             </div>

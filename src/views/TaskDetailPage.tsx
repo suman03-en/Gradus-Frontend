@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { apiJson, apiFormData } from '../lib/api'
 import type { Task, TaskRecord } from '../lib/types'
 import { useAuth } from '../state/auth'
-import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES } from '../lib/choices'
+import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES, TASK_COMPONENT_CHOICES } from '../lib/choices'
 import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
 import { ResourcesPanel } from '../components/ResourcesPanel'
 import { PDFViewerModal } from '../components/PDFViewerModal'
@@ -18,9 +18,12 @@ function choiceLabel(choices: readonly { value: string; label: string }[], val: 
   return choices.find((c) => c.value === val)?.label ?? val
 }
 
+type TaskTab = 'overview' | 'resources' | 'submissions'
+
 export function TaskDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
   const isStudent = useMemo(() => !!(user?.profile && 'roll_no' in user.profile), [user])
 
@@ -46,6 +49,7 @@ export function TaskDetailPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [submitFieldErrors, setSubmitFieldErrors] = useState<FieldErrors | null>(null)
+  const [showSubmitForm, setShowSubmitForm] = useState(false)
 
   // Evaluation (teacher) — per-submission messages
   const [evalForm, setEvalForm] = useState<Record<string, { marks_obtained: string; feedback: string }>>({})
@@ -58,6 +62,7 @@ export function TaskDetailPage() {
   const [bulkSuccess, setBulkSuccess] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkErrors, setBulkErrors] = useState<string[]>([])
+  const [showBulkForm, setShowBulkForm] = useState(false)
 
   // Direct Student Evaluation (teacher, for students without records)
   const [directRollNo, setDirectRollNo] = useState('')
@@ -66,10 +71,12 @@ export function TaskDetailPage() {
   const [directMsg, setDirectMsg] = useState<string | null>(null)
   const [directSuccess, setDirectSuccess] = useState(false)
   const [directFieldErrors, setDirectFieldErrors] = useState<FieldErrors | null>(null)
+  const [showDirectEvalForm, setShowDirectEvalForm] = useState(false)
 
   // Record Detail Modal
   const [detailRecord, setDetailRecord] = useState<TaskRecord | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<TaskTab>('overview')
   const fetchTask = useCallback(async () => {
     setError(null)
     setLoading(true)
@@ -101,12 +108,22 @@ export function TaskDetailPage() {
     fetchRecords()
   }, [fetchTask, fetchRecords])
 
+  // ─── Handle Back Navigation ──────────────────────────────────
+  const handleBack = () => {
+    const state = location.state as any
+    if (state?.fromClassroomTasksTab && state?.classroomId) {
+      navigate(`/classrooms/${state.classroomId}`, { state: { activeTab: 'tasks' } })
+    } else {
+      navigate(-1)
+    }
+  }
+
   // ─── Delete Task (Teacher) ──────────────────────────────────
   async function onDelete() {
     if (!confirm('Are you sure you want to delete this task?')) return
     try {
       await apiJson(`/api/v1/tasks/${id}/`, { method: 'DELETE' })
-      navigate(-1)
+      handleBack()
     } catch (e: any) {
       setError(e?.message ?? 'Delete failed')
     }
@@ -138,6 +155,7 @@ export function TaskDetailPage() {
           status: editForm.status,
           mode: editForm.mode,
           task_type: editForm.task_type,
+          assessment_component: editForm.assessment_component,
         },
       })
       setEditMsg('Task updated successfully.')
@@ -178,6 +196,7 @@ export function TaskDetailPage() {
       }
       setSubmitSuccess(true)
       setFile(null)
+      setShowSubmitForm(false)
       await fetchRecords()
     } catch (e: any) {
       setSubmitFieldErrors(getFieldErrors(e))
@@ -247,6 +266,7 @@ export function TaskDetailPage() {
       setBulkSuccess(true)
       setBulkErrors(res.errors ?? [])
       setBulkFile(null)
+      setShowBulkForm(false)
       const fileInput = document.getElementById('bulk-csv-input') as HTMLInputElement | null
       if (fileInput) fileInput.value = ''
       await fetchRecords()
@@ -287,6 +307,7 @@ export function TaskDetailPage() {
       setDirectRollNo('')
       setDirectMarks('')
       setDirectFeedback('')
+      setShowDirectEvalForm(false)
       await fetchRecords()
     } catch (e: any) {
       setDirectFieldErrors(getFieldErrors(e))
@@ -313,17 +334,17 @@ export function TaskDetailPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <button onClick={() => navigate(-1)} className="text-sm font-medium text-brand-600 hover:underline">
+          <button onClick={handleBack} className="text-sm font-medium text-brand-600 hover:underline">
             ← Back
           </button>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">Task Details</h1>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Task Details</h1>
         </div>
         {!isStudent && task && (
-          <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => setEditing(!editing)}>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
               {editing ? 'Cancel' : 'Edit'}
             </button>
-            <button className="btn-danger" onClick={onDelete}>
+            <button className="btn-danger flex-1 sm:flex-none" onClick={onDelete}>
               Delete
             </button>
           </div>
@@ -340,10 +361,24 @@ export function TaskDetailPage() {
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
       ) : task ? (
         <>
+          <div className="card p-3">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={activeTab === 'overview' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('overview')}>
+                Overview
+              </button>
+              <button type="button" className={activeTab === 'resources' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('resources')}>
+                Resources
+              </button>
+              <button type="button" className={activeTab === 'submissions' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('submissions')}>
+                Submissions
+              </button>
+            </div>
+          </div>
+
           {/* ─── Task Info Card ───────────────────────────── */}
-          {editing ? (
+          {activeTab === 'overview' && (editing ? (
             <form className="card p-6 space-y-6" onSubmit={onSaveEdit}>
-              <div className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-4">Edit Task</div>
+              <div className="border-b border-slate-100 pb-4 text-lg font-black tracking-tight text-slate-900">Edit Task</div>
               <div className="grid gap-6 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className="label">Name</label>
@@ -430,6 +465,16 @@ export function TaskDetailPage() {
                     {TASK_TYPE_CHOICES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="label">Component</label>
+                  <select
+                    className="input"
+                    value={editForm.assessment_component ?? 'theory'}
+                    onChange={(e) => setEditForm((f) => ({ ...f, assessment_component: e.target.value as 'theory' | 'lab' }))}
+                  >
+                    {TASK_COMPONENT_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                </div>
               </div>
               {editMsg && (
                 <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
@@ -437,7 +482,7 @@ export function TaskDetailPage() {
                 </div>
               )}
               <div className="flex justify-end pt-4">
-                <button className="btn-primary px-8">Save Changes</button>
+                <button className="btn-primary w-full px-8 sm:w-auto">Save Changes</button>
               </div>
             </form>
           ) : (
@@ -446,71 +491,95 @@ export function TaskDetailPage() {
                 <div className="card p-6 h-full">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Task Name</div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Task Name</div>
                       <div className="mt-1 text-xl font-bold text-slate-900">{task.name}</div>
                     </div>
                     <span className={statusBadge(task.status)}>{choiceLabel(TASK_STATUS_CHOICES, task.status)}</span>
                   </div>
                   <div className="mt-8">
-                    <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Description</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</div>
                     <div className="mt-2 text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{task.description || 'No description provided.'}</div>
                   </div>
                 </div>
               </div>
               <aside className="card p-6">
-                <div className="text-sm font-semibold text-slate-900 border-b border-slate-100 pb-3 mb-4">Details</div>
+                <div className="mb-4 border-b border-slate-100 pb-3 text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Details</div>
                 <dl className="space-y-4">
                   <div>
-                    <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Teacher</dt>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Teacher</dt>
                     <dd className="mt-1 font-medium text-slate-900 text-sm">@{task.created_by}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Full Marks</dt>
-                    <dd className="mt-1 font-bold text-brand-700 text-2xl">{task.full_marks}</dd>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Full Marks</dt>
+                      <dd className="mt-1 text-2xl font-bold text-slate-900">{task.full_marks}</dd>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     <div>
-                      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mode</dt>
-                      <dd className={`mt-1 font-medium text-sm px-3 py-1 rounded-lg border ${task.mode === 'online' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{choiceLabel(TASK_MODE_CHOICES, task.mode)}</dd>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Mode</dt>
+                      <dd className={`mt-1 rounded-lg border px-3 py-1 text-sm font-medium ${task.mode === 'online' ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-slate-300 bg-slate-100 text-slate-700'}`}>{choiceLabel(TASK_MODE_CHOICES, task.mode)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Type</dt>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Type</dt>
                       <dd className="mt-1 font-medium text-slate-900 text-sm px-3 py-1 bg-slate-50 rounded-lg border border-slate-100">{choiceLabel(TASK_TYPE_CHOICES, task.task_type)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Component</dt>
+                      <dd className={`mt-1 rounded-lg border px-3 py-1 text-sm font-medium ${task.assessment_component === 'lab' ? 'border-slate-300 bg-slate-100 text-slate-700' : 'border-brand-200 bg-brand-50 text-brand-700'}`}>
+                        {choiceLabel(TASK_COMPONENT_CHOICES, task.assessment_component)}
+                      </dd>
                     </div>
                   </div>
                   <div>
-                    <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Deadline</dt>
+                      <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Deadline</dt>
                     <dd className="mt-1 font-medium text-slate-900 text-sm">{new Date(task.end_date).toLocaleString()}</dd>
                     {isClosed && <div className="mt-2 inline-block px-3 py-1 bg-red-50 text-[10px] font-semibold uppercase text-red-600 rounded-full border border-red-100">Closed</div>}
                   </div>
                 </dl>
               </aside>
             </div>
-          )}
+          ))}
 
           {/* ─── Resources Panel ──────────────────────── */}
-          {id && <ResourcesPanel contentType="task" objectId={id} />}
+          {activeTab === 'resources' && id && <ResourcesPanel contentType="task" objectId={id} />}
 
-          {/* ─── Submit File (Student Only) ────────────── */}
-          {isStudent && (
-            <div className="card p-6">
-              {(() => {
-                const myRecord = records.find((s) => s.student === user?.id)
-                const isEvaluated = myRecord?.is_evaluated || false
-                return (
-                  <>
-                    <div className="text-sm font-semibold text-slate-900">
-                      {myRecord ? 'Update Your Submission' : 'Submit Your Work'}
+          {activeTab === 'submissions' && (
+            <>
+              {/* ─── Submit File (Student Only) ────────────── */}
+              {isStudent && (
+                <div className="card p-6">
+                  {(() => {
+                    const myRecord = records.find((s) => s.student === user?.id)
+                    const isEvaluated = myRecord?.is_evaluated || false
+                    return (
+                      <>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          {myRecord ? 'Update Your Submission' : 'Submit Your Work'}
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {myRecord ? 'You have already submitted. Upload a new file to update.' : 'Upload a file for this task.'}
+                        </p>
+                      </div>
+                      {!isEvaluated && (
+                        <button
+                          type="button"
+                          className="btn-secondary w-full sm:w-auto"
+                          onClick={() => {
+                            setShowSubmitForm((prev) => !prev)
+                            setSubmitFieldErrors(null)
+                          }}
+                        >
+                          {showSubmitForm ? 'Cancel' : myRecord ? 'Update Submission' : 'Submit Work'}
+                        </button>
+                      )}
                     </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {myRecord ? 'You have already submitted. Upload a new file to update.' : 'Upload a file for this task.'}
-                    </p>
 
                     {isEvaluated ? (
                       <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                         Your submission has been evaluated. You can no longer update it.
                       </div>
-                    ) : (
+                    ) : showSubmitForm ? (
                       <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onSubmitFile}>
                         <div className="flex-1">
                           <label className="label">File</label>
@@ -525,46 +594,59 @@ export function TaskDetailPage() {
                             </div>
                           )}
                         </div>
-                        <button className="btn-primary" disabled={!file || submitBusy || isClosed}>
+                        <button className="btn-primary w-full sm:w-auto" disabled={!file || submitBusy || isClosed}>
                           {submitBusy ? 'Uploading…' : isClosed ? 'Deadline Passed' : myRecord ? 'Update' : 'Submit'}
                         </button>
                       </form>
-                    )}
-                  </>
-                )
-              })()}
+                    ) : null}
+                      </>
+                    )
+                  })()}
 
-              {isClosed && <p className="mt-2 text-xs font-medium text-red-500">This task is no longer accepting submissions.</p>}
-              {submitMsg && (
-                <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${submitSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
-                  {submitMsg}
+                  {isClosed && <p className="mt-2 text-xs font-medium text-red-500">This task is no longer accepting submissions.</p>}
+                  {submitMsg && (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${submitSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                      {submitMsg}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ─── Bulk CSV Evaluation (Teacher, Offline tasks only) ──── */}
-          {!isStudent && task.mode === 'offline' && (
-            <div className="card p-6">
-              <div className="text-sm font-semibold text-slate-900">Bulk Evaluate (CSV Upload)</div>
-              <p className="mt-1 text-sm text-slate-500">
-                Upload a CSV file with columns: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-mono">Roll No, Marks, Feedback</code>
-              </p>
-              <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onBulkEvaluate}>
-                <div className="flex-1">
-                  <label className="label">CSV File</label>
-                  <input
-                    id="bulk-csv-input"
-                    className="input mt-1"
-                    type="file"
-                    accept=".csv"
-                    onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
-                  />
+              {/* ─── Bulk CSV Evaluation (Teacher, Offline tasks only) ──── */}
+              {!isStudent && task.mode === 'offline' && (
+                <div className="card p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Bulk Evaluate (CSV Upload)</div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Upload a CSV file with columns: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-mono">Roll No, Marks, Feedback</code>
+                  </p>
                 </div>
-                <button className="btn-primary shrink-0" disabled={!bulkFile || bulkBusy}>
-                  {bulkBusy ? 'Uploading…' : 'Upload & Evaluate'}
+                <button
+                  type="button"
+                  className="btn-secondary w-full sm:w-auto"
+                  onClick={() => setShowBulkForm((prev) => !prev)}
+                >
+                  {showBulkForm ? 'Cancel' : 'Bulk Evaluate'}
                 </button>
-              </form>
+              </div>
+              {showBulkForm && (
+                <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onBulkEvaluate}>
+                  <div className="flex-1">
+                    <label className="label">CSV File</label>
+                    <input
+                      id="bulk-csv-input"
+                      className="input mt-1"
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
+                    />
+                  </div>
+                  <button className="btn-primary w-full shrink-0 sm:w-auto" disabled={!bulkFile || bulkBusy}>
+                    {bulkBusy ? 'Uploading…' : 'Upload & Evaluate'}
+                  </button>
+                </form>
+              )}
               {bulkMsg && (
                 <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${bulkSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
                   {bulkMsg}
@@ -580,75 +662,91 @@ export function TaskDetailPage() {
                   </ul>
                 </div>
               )}
-            </div>
-          )}
+                </div>
+              )}
 
-          {/* ─── Direct Student Evaluation (Teacher Only) ───── */}
-          {!isStudent && (
-            <div className="card p-6">
-              <div className="text-sm font-semibold text-slate-900">Evaluate Student Directly</div>
-              <p className="mt-1 text-sm text-slate-500">
-                Grade a student manually by their Roll No — useful for offline tasks where no submission exists.
-              </p>
-              <form className="mt-4 grid gap-4 sm:grid-cols-3" onSubmit={onDirectEvaluate}>
+              {/* ─── Direct Student Evaluation (Teacher Only, Offline Tasks) ───── */}
+              {!isStudent && task?.mode === 'offline' && (
+                <div className="card p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <label className="label">Roll No</label>
-                  <input
-                    className="input mt-1"
-                    value={directRollNo}
-                    onChange={(e) => setDirectRollNo(e.target.value)}
-                    placeholder="e.g. THA079BEI042"
-                  />
-                  {firstFieldError(directFieldErrors, 'roll_no') && (
-                    <div className="mt-1 text-xs font-medium text-red-600">
-                      {firstFieldError(directFieldErrors, 'roll_no')}
-                    </div>
-                  )}
+                  <div className="text-sm font-semibold text-slate-900">Evaluate Student Directly</div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Grade a student manually by their Roll No — useful for offline tasks where no submission exists.
+                  </p>
                 </div>
-                <div>
-                  <label className="label">Marks ({task.full_marks} max)</label>
-                  <input
-                    className="input mt-1"
-                    type="number"
-                    min={0}
-                    max={task.full_marks}
-                    value={directMarks}
-                    onChange={(e) => setDirectMarks(e.target.value)}
-                  />
-                  {firstFieldError(directFieldErrors, 'marks_obtained') && (
-                    <div className="mt-1 text-xs font-medium text-red-600">
-                      {firstFieldError(directFieldErrors, 'marks_obtained')}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="label">Feedback</label>
-                  <input
-                    className="input mt-1"
-                    value={directFeedback}
-                    onChange={(e) => setDirectFeedback(e.target.value)}
-                    placeholder="Great work!"
-                  />
-                  {firstFieldError(directFieldErrors, 'feedback') && (
-                    <div className="mt-1 text-xs font-medium text-red-600">
-                      {firstFieldError(directFieldErrors, 'feedback')}
-                    </div>
-                  )}
-                </div>
-                <div className="sm:col-span-3">
-                  <button className="btn-primary">Evaluate</button>
-                </div>
-              </form>
+                <button
+                  type="button"
+                  className="btn-secondary w-full sm:w-auto"
+                  onClick={() => {
+                    setShowDirectEvalForm((prev) => !prev)
+                    setDirectFieldErrors(null)
+                  }}
+                >
+                  {showDirectEvalForm ? 'Cancel' : 'Evaluate Student'}
+                </button>
+              </div>
+              {showDirectEvalForm && (
+                <form className="mt-4 grid gap-4 sm:grid-cols-3" onSubmit={onDirectEvaluate}>
+                  <div>
+                    <label className="label">Roll No</label>
+                    <input
+                      className="input mt-1"
+                      value={directRollNo}
+                      onChange={(e) => setDirectRollNo(e.target.value)}
+                      placeholder="e.g. THA079BEI042"
+                    />
+                    {firstFieldError(directFieldErrors, 'roll_no') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(directFieldErrors, 'roll_no')}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="label">Marks ({task.full_marks} max)</label>
+                    <input
+                      className="input mt-1"
+                      type="number"
+                      min={0}
+                      max={task.full_marks}
+                      value={directMarks}
+                      onChange={(e) => setDirectMarks(e.target.value)}
+                    />
+                    {firstFieldError(directFieldErrors, 'marks_obtained') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(directFieldErrors, 'marks_obtained')}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="label">Feedback</label>
+                    <input
+                      className="input mt-1"
+                      value={directFeedback}
+                      onChange={(e) => setDirectFeedback(e.target.value)}
+                      placeholder="Great work!"
+                    />
+                    {firstFieldError(directFieldErrors, 'feedback') && (
+                      <div className="mt-1 text-xs font-medium text-red-600">
+                        {firstFieldError(directFieldErrors, 'feedback')}
+                      </div>
+                    )}
+                  </div>
+                  <div className="sm:col-span-3">
+                    <button className="btn-primary w-full sm:w-auto">Evaluate</button>
+                  </div>
+                </form>
+              )}
               {directMsg && (
                 <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${directSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
                   {directMsg}
                 </div>
               )}
-            </div>
-          )}
+                </div>
+              )}
 
-          {/* ─── Records List ──────────────────────── */}
-          <div className="card p-6">
+              {/* ─── Records List ──────────────────────── */}
+              <div className="card p-6">
             <div className="flex items-center justify-between gap-4">
               <div className="text-sm font-semibold text-slate-900">
                 Submissions {records.length > 0 && <span className="text-slate-400">({records.length})</span>}
@@ -680,7 +778,7 @@ export function TaskDetailPage() {
                           <div className="mt-1 text-xs text-slate-500">
                             Submitted: {new Date(record.submitted_at).toLocaleString()}
                           </div>
-                          <div className="mt-2 flex items-center gap-3">
+                          <div className="mt-2 flex flex-wrap items-center gap-2 sm:gap-3">
                             <button
                               onClick={() => onViewRecordDetail(record.id)}
                               disabled={detailLoading}
@@ -766,7 +864,7 @@ export function TaskDetailPage() {
                             </div>
                           </div>
                           <button
-                            className="btn-primary mt-3"
+                            className="btn-primary mt-3 w-full sm:w-auto"
                             onClick={() => onEvaluate(record.id)}
                           >
                             Submit Evaluation
@@ -783,7 +881,9 @@ export function TaskDetailPage() {
                 })}
               </div>
             )}
-          </div>
+              </div>
+            </>
+          )}
         </>
       ) : null}
 
@@ -797,9 +897,9 @@ export function TaskDetailPage() {
 
       {/* ─── Record Detail Modal ────────────────────── */}
       {detailRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-3 sm:p-4">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl max-h-[92vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 sm:px-6">
               <h3 className="text-base font-bold text-slate-900">Record Details</h3>
               <button
                 onClick={() => setDetailRecord(null)}
@@ -808,7 +908,7 @@ export function TaskDetailPage() {
                 ✕
               </button>
             </div>
-            <div className="px-6 py-5 space-y-4">
+            <div className="space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
               <dl className="grid gap-4 sm:grid-cols-2 text-sm">
                 <div>
                   <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Student</dt>
@@ -852,7 +952,7 @@ export function TaskDetailPage() {
                 )}
               </dl>
               {detailRecord.uploaded_file && (
-                <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-2">
                   <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Submission File</dt>
                   <div className="flex items-center gap-2">
                     {detailRecord.uploaded_file.split('?')[0].toLowerCase().endsWith('.pdf') && (
@@ -881,8 +981,8 @@ export function TaskDetailPage() {
                 </div>
               )}
             </div>
-            <div className="border-t border-slate-100 px-6 py-4 flex justify-end">
-              <button className="btn-secondary" onClick={() => setDetailRecord(null)}>Close</button>
+            <div className="flex justify-end border-t border-slate-100 px-4 py-4 sm:px-6">
+              <button className="btn-secondary w-full sm:w-auto" onClick={() => setDetailRecord(null)}>Close</button>
             </div>
           </div>
         </div>

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { apiJson } from '../lib/api'
-import type { Classroom, Task, GradebookData } from '../lib/types'
+import type { Classroom, Task, GradebookData, User } from '../lib/types'
 import { useAuth } from '../state/auth'
-import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES } from '../lib/choices'
+import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES, TASK_COMPONENT_CHOICES } from '../lib/choices'
 import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
 import { ResourcesPanel } from '../components/ResourcesPanel'
 
@@ -17,9 +17,12 @@ function choiceLabel(choices: readonly { value: string; label: string }[], val: 
   return choices.find((c) => c.value === val)?.label ?? val
 }
 
+type ClassroomTab = 'overview' | 'resources' | 'students' | 'tasks'
+
 export function ClassroomDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
   const isStudent = useMemo(() => !!(user?.profile && 'roll_no' in user.profile), [user])
 
@@ -38,9 +41,9 @@ export function ClassroomDetailPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
 
-  const [showStudents, setShowStudents] = useState(false)
   const [gradebook, setGradebook] = useState<GradebookData | null>(null)
   const [gbLoading, setGbLoading] = useState(false)
+  const [studentNames, setStudentNames] = useState<Record<string, string>>({})
   const fetchGradebook = useCallback(async () => {
     setGbLoading(true)
     try {
@@ -53,20 +56,15 @@ export function ClassroomDetailPage() {
     }
   }, [id])
 
-  async function onToggleStudents() {
-    if (!showStudents && !gradebook) {
-      await fetchGradebook()
-    }
-    setShowStudents(!showStudents)
-  }
-
   // Add student form (teacher only)
   const [rollNo, setRollNo] = useState('')
   const [addStudentMsg, setAddStudentMsg] = useState<string | null>(null)
   const [addStudentSuccess, setAddStudentSuccess] = useState(false)
+  const [showAddStudentForm, setShowAddStudentForm] = useState(false)
 
   // Create task form (teacher only)
   const [showCreateTask, setShowCreateTask] = useState(false)
+  const [activeTab, setActiveTab] = useState<ClassroomTab>('overview')
   const [taskForm, setTaskForm] = useState({
     name: '',
     description: '',
@@ -75,6 +73,7 @@ export function ClassroomDetailPage() {
     status: 'published',
     mode: 'online',
     task_type: 'assignment',
+    assessment_component: 'theory',
   })
   const [createTaskMsg, setCreateTaskMsg] = useState<string | null>(null)
   const [createTaskSuccess, setCreateTaskSuccess] = useState(false)
@@ -112,6 +111,59 @@ export function ClassroomDetailPage() {
     fetchTasks()
   }, [fetchTasks])
 
+  useEffect(() => {
+    if (activeTab === 'students' && !gradebook) {
+      fetchGradebook()
+    }
+  }, [activeTab, gradebook, fetchGradebook])
+
+  // Set activeTab from navigation state (when coming back from task detail)
+  useEffect(() => {
+    const state = location.state as any
+    if (state?.activeTab) {
+      setActiveTab(state.activeTab)
+    }
+  }, [location.state])
+
+  useEffect(() => {
+    if (activeTab !== 'students' || !gradebook?.students?.length) return
+
+    const missingUsernames = gradebook.students
+      .map((student) => student.username)
+      .filter((username) => !studentNames[username])
+
+    if (!missingUsernames.length) return
+
+    let cancelled = false
+
+    ;(async () => {
+      const results = await Promise.allSettled(
+        missingUsernames.map((username) => apiJson<User>(`/api/v1/accounts/users/${username}`)),
+      )
+
+      if (cancelled) return
+
+      const nextNames: Record<string, string> = {}
+      results.forEach((result, index) => {
+        const username = missingUsernames[index]
+        if (result.status === 'fulfilled') {
+          const first = result.value.first_name?.trim() ?? ''
+          const last = result.value.last_name?.trim() ?? ''
+          const fullName = `${first} ${last}`.trim()
+          nextNames[username] = fullName || username
+        } else {
+          nextNames[username] = username
+        }
+      })
+
+      setStudentNames((prev) => ({ ...prev, ...nextNames }))
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, gradebook, studentNames])
+
   // ─── Add Student ───────────────────────────────────────────
   async function onAddStudent(e: React.FormEvent) {
     e.preventDefault()
@@ -125,6 +177,7 @@ export function ClassroomDetailPage() {
       setAddStudentMsg(res.detail)
       setAddStudentSuccess(true)
       setRollNo('')
+      setShowAddStudentForm(false)
     } catch (err: any) {
       setAddStudentMsg(err?.message ?? 'Add student failed')
       setAddStudentSuccess(false)
@@ -161,11 +214,21 @@ export function ClassroomDetailPage() {
           status: taskForm.status,
           mode: taskForm.mode,
           task_type: taskForm.task_type,
+          assessment_component: taskForm.assessment_component,
         },
       })
       setCreateTaskMsg(`Created "${created.name}"`)
       setCreateTaskSuccess(true)
-      setTaskForm({ name: '', description: '', end_date: '', full_marks: '', status: 'published', mode: 'online', task_type: 'assignment' })
+      setTaskForm({
+        name: '',
+        description: '',
+        end_date: '',
+        full_marks: '',
+        status: 'published',
+        mode: 'online',
+        task_type: 'assignment',
+        assessment_component: 'theory',
+      })
       setShowCreateTask(false)
       await fetchTasks()
     } catch (err: any) {
@@ -222,23 +285,23 @@ export function ClassroomDetailPage() {
           <Link className="text-sm font-medium text-brand-600 hover:underline" to="/classrooms">
             ← Back to Classrooms
           </Link>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">Classroom</h1>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Classroom</h1>
         </div>
         {!isStudent ? (
-          <div className="flex gap-2">
-            <Link to={`/classrooms/${id}/gradebook`} className="btn-primary">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <Link to={`/classrooms/${id}/gradebook`} className="btn-primary flex-1 sm:flex-none">
               Gradebook
             </Link>
-            <button className="btn-secondary" onClick={() => setEditing(!editing)}>
+            <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
               {editing ? 'Cancel' : 'Edit'}
             </button>
-            <button className="btn-danger" onClick={onDeleteClassroom}>
+            <button className="btn-danger flex-1 sm:flex-none" onClick={onDeleteClassroom}>
               Delete
             </button>
           </div>
         ) : (
-          <div className="flex gap-2">
-            <Link to={`/classrooms/${id}/gradebook`} className="btn-primary">
+          <div className="flex w-full gap-2 sm:w-auto">
+            <Link to={`/classrooms/${id}/gradebook`} className="btn-primary w-full sm:w-auto">
               My Grades
             </Link>
           </div>
@@ -255,157 +318,189 @@ export function ClassroomDetailPage() {
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
       ) : item ? (
         <>
-          {/* ─── Classroom Info & Edit Form ─────────────── */}
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              {editing ? (
-                <form className="card p-6 space-y-4" onSubmit={onSaveClassroom}>
-                  <div className="text-sm font-semibold text-slate-900">Edit Classroom</div>
-                  <div>
-                    <label className="label">Name</label>
-                    <input
-                      className="input mt-1"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
-                    />
-                    {firstFieldError(editFieldErrors, 'name') && (
-                      <div className="mt-1 text-xs font-medium text-red-600">
-                        {firstFieldError(editFieldErrors, 'name')}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="label">Description</label>
-                    <textarea
-                      className="textarea"
-                      value={editForm.description}
-                      onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
-                    />
-                    {firstFieldError(editFieldErrors, 'description') && (
-                      <div className="mt-1 text-xs font-medium text-red-600">
-                        {firstFieldError(editFieldErrors, 'description')}
-                      </div>
-                    )}
-                  </div>
-                  {editMsg && (
-                    <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
-                      {editMsg}
-                    </div>
-                  )}
-                  <button className="btn-primary">Save Changes</button>
-                </form>
-              ) : (
-                <div className="card p-6 h-full">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Name</div>
-                      <div className="mt-1 text-xl font-bold text-slate-900">{item.name}</div>
-                    </div>
-                    <div className="rounded-xl bg-brand-50 border border-brand-100 px-5 py-3">
-                      <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Invite Code</div>
-                      <div className="mt-0.5 text-lg font-bold text-brand-700 tracking-widest">{item.invite_code}</div>
-                    </div>
-                  </div>
-                  <div className="mt-8">
-                    <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Description</div>
-                    <div className="mt-2 text-sm text-slate-600 leading-relaxed">{item.description}</div>
-                  </div>
-                </div>
-              )}
+          <div className="card p-3">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={activeTab === 'overview' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('overview')}>
+                Overview
+              </button>
+              <button type="button" className={activeTab === 'resources' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('resources')}>
+                Resources
+              </button>
+              <button type="button" className={activeTab === 'students' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('students')}>
+                Students
+              </button>
+              <button type="button" className={activeTab === 'tasks' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('tasks')}>
+                Tasks
+              </button>
             </div>
-
-            <aside className="card p-6">
-              <div className="text-sm font-semibold text-slate-900">Details</div>
-              <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Teacher</dt>
-                  <dd className="font-medium text-slate-900">{item.created_by}</dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Students</dt>
-                  <dd className="font-medium text-slate-900">{item.students?.length ?? 0}</dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Created</dt>
-                  <dd className="font-medium text-slate-900">{new Date(item.created_at).toLocaleString()}</dd>
-                </div>
-              </dl>
-            </aside>
           </div>
 
-          {/* ─── Add Student (Teacher Only) ────────── */}
-          {!isStudent && (
-            <div className="card p-6">
-              <div className="text-sm font-semibold text-slate-900">Add Student</div>
-              <p className="mt-1 text-sm text-slate-500">Add a student by their roll number (e.g. THA079BEI042).</p>
-              <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={onAddStudent}>
-                <input
-                  className="input flex-1"
-                  value={rollNo}
-                  onChange={(e) => setRollNo(e.target.value.toUpperCase())}
-                  placeholder="Roll number"
-                />
-                <button className="btn-primary" disabled={!rollNo.trim()}>
-                  Add Student
-                </button>
-              </form>
-              {addStudentMsg && (
-                <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${addStudentSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
-                  {addStudentMsg}
-                </div>
-              )}
+          {activeTab === 'overview' && (
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                {editing ? (
+                  <form className="card p-6 space-y-4" onSubmit={onSaveClassroom}>
+                    <div className="text-sm font-semibold text-slate-900">Edit Classroom</div>
+                    <div>
+                      <label className="label">Name</label>
+                      <input
+                        className="input mt-1"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      />
+                      {firstFieldError(editFieldErrors, 'name') && (
+                        <div className="mt-1 text-xs font-medium text-red-600">
+                          {firstFieldError(editFieldErrors, 'name')}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="label">Description</label>
+                      <textarea
+                        className="textarea"
+                        value={editForm.description}
+                        onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
+                      />
+                      {firstFieldError(editFieldErrors, 'description') && (
+                        <div className="mt-1 text-xs font-medium text-red-600">
+                          {firstFieldError(editFieldErrors, 'description')}
+                        </div>
+                      )}
+                    </div>
+                    {editMsg && (
+                      <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                        {editMsg}
+                      </div>
+                    )}
+                    <button className="btn-primary">Save Changes</button>
+                  </form>
+                ) : (
+                  <div className="card p-6 h-full">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Name</div>
+                        <div className="mt-1 text-xl font-bold text-slate-900">{item.name}</div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-5 py-3">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Invite Code</div>
+                        <div className="mt-0.5 text-lg font-bold text-brand-700 tracking-widest">{item.invite_code}</div>
+                      </div>
+                    </div>
+                    <div className="mt-8">
+                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</div>
+                      <div className="mt-2 text-sm text-slate-600 leading-relaxed">{item.description}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <aside className="card p-6">
+                <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Details</div>
+                <dl className="mt-4 space-y-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-slate-500">Teacher</dt>
+                    <dd className="font-medium text-slate-900">{item.created_by}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-slate-500">Students</dt>
+                    <dd className="font-medium text-slate-900">{item.students?.length ?? 0}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-slate-500">Created</dt>
+                    <dd className="font-medium text-slate-900">{new Date(item.created_at).toLocaleString()}</dd>
+                  </div>
+                </dl>
+              </aside>
             </div>
           )}
 
-          {/* ─── Students Roster ─────────────────────── */}
-          <div className="card p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="text-sm font-semibold text-slate-900">Enrolled Students</div>
-              <button className="btn-secondary text-xs" onClick={onToggleStudents} disabled={gbLoading}>
-                {showStudents ? 'Hide Students' : 'View Students'}
-              </button>
-            </div>
-            
-            {showStudents && (
-              <>
+          {activeTab === 'students' && (
+            <div className="space-y-6">
+              {!isStudent && (
+                <div className="card p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Add Student</div>
+                      <p className="mt-1 text-sm text-slate-500">Add a student by their roll number (e.g. THA079BEI042).</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary w-full sm:w-auto"
+                      onClick={() => setShowAddStudentForm((prev) => !prev)}
+                    >
+                      {showAddStudentForm ? 'Cancel' : 'Add Student'}
+                    </button>
+                  </div>
+                  {showAddStudentForm && (
+                    <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={onAddStudent}>
+                      <input
+                        className="input flex-1"
+                        value={rollNo}
+                        onChange={(e) => setRollNo(e.target.value.toUpperCase())}
+                        placeholder="Roll number"
+                      />
+                      <button className="btn-primary w-full sm:w-auto" disabled={!rollNo.trim()}>
+                        Add Student
+                      </button>
+                    </form>
+                  )}
+                  {addStudentMsg && (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${addStudentSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                      {addStudentMsg}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="card p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Enrolled Students</div>
+                </div>
+
                 {gbLoading ? (
                    <div className="mt-4 animate-pulse h-10 w-full bg-slate-100 rounded-xl" />
                 ) : !gradebook || gradebook.students.length === 0 ? (
                    <div className="mt-4 text-sm text-slate-500">No students enrolled yet.</div>
                 ) : (
-                   <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                   <ul className="mt-4 space-y-3">
                      {gradebook.students.map(s => (
-                       <li key={s.id} className="rounded-xl border border-slate-200 bg-slate-50 flex justify-between items-center p-3">
-                         <Link to={`/users/${s.username}`} className="font-semibold text-sm text-brand-600 hover:underline truncate">
-                            @{s.username}
-                         </Link>
-                         <span className="text-xs font-mono text-slate-500 shrink-0 ml-2">{s.roll_no}</span>
+                       <li key={s.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                         <div className="flex flex-wrap items-center justify-between gap-2">
+                           <div className="min-w-0">
+                             <div className="text-sm font-semibold text-slate-900 truncate">
+                               {studentNames[s.username] ?? s.username}
+                             </div>
+                             <div className="mt-0.5 text-xs text-slate-500">Roll No: {s.roll_no}</div>
+                           </div>
+                           <Link to={`/users/${s.username}`} className="text-xs font-semibold text-brand-700 hover:underline">
+                             View Profile
+                           </Link>
+                         </div>
                        </li>
                      ))}
                    </ul>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
 
-          {/* ─── Resources Panel ──────────────────────── */}
-          {id && <ResourcesPanel contentType="classroom" objectId={id} />}
+          {activeTab === 'resources' && id && <ResourcesPanel contentType="classroom" objectId={id} />}
 
-          {/* ─── Tasks Section ─────────────────────── */}
-          <div className="space-y-4">
+          {activeTab === 'tasks' && (
+            <div className="space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <div className="text-lg font-bold text-slate-900">Tasks</div>
+                <div className="text-lg font-black tracking-tight text-slate-900">Tasks</div>
                 <p className="text-sm text-slate-500">
                   {isStudent ? 'View and submit assignments.' : 'Manage classroom tasks.'}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button className="btn-secondary text-xs" onClick={fetchTasks} disabled={tasksLoading}>
+              <div className="flex w-full gap-2 sm:w-auto">
+                <button className="btn-secondary flex-1 text-xs sm:flex-none" onClick={fetchTasks} disabled={tasksLoading}>
                   Refresh
                 </button>
                 {!isStudent && (
-                  <button className="btn-primary text-xs" onClick={() => setShowCreateTask(!showCreateTask)}>
+                  <button className="btn-primary flex-1 text-xs sm:flex-none" onClick={() => setShowCreateTask(!showCreateTask)}>
                     {showCreateTask ? 'Cancel' : '+ Create Task'}
                   </button>
                 )}
@@ -503,8 +598,18 @@ export function ClassroomDetailPage() {
                       {TASK_TYPE_CHOICES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
+                  <div>
+                    <label className="label">Component</label>
+                    <select
+                      className="input mt-1"
+                      value={taskForm.assessment_component}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, assessment_component: e.target.value as 'theory' | 'lab' }))}
+                    >
+                      {TASK_COMPONENT_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                  </div>
                   <div className="sm:col-span-2">
-                    <button className="btn-primary">
+                    <button className="btn-primary w-full sm:w-auto">
                       Create Task
                     </button>
                   </div>
@@ -537,7 +642,7 @@ export function ClassroomDetailPage() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {tasks.map((t) => (
-                  <Link key={t.id} to={`/tasks/${t.id}`} className="card p-5 hover:border-brand-200 transition">
+                  <Link key={t.id} to={`/tasks/${t.id}`} state={{ fromClassroomTasksTab: true, classroomId: id }} className="card p-5 hover:border-brand-200 transition">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold text-slate-900">{t.name}</div>
@@ -547,6 +652,9 @@ export function ClassroomDetailPage() {
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="rounded bg-slate-50 px-2 py-1 border border-slate-100">{choiceLabel(TASK_TYPE_CHOICES, t.task_type)}</span>
+                      <span className={`rounded px-2 py-1 border font-medium ${t.assessment_component === 'lab' ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                        {choiceLabel(TASK_COMPONENT_CHOICES, t.assessment_component)}
+                      </span>
                       <span className={`rounded px-2 py-1 border font-medium ${t.mode === 'online' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{choiceLabel(TASK_MODE_CHOICES, t.mode)}</span>
                       <span className="rounded bg-slate-50 px-2 py-1 border border-slate-100">FM: {t.full_marks}</span>
                       <span className="rounded bg-slate-50 px-2 py-1 border border-slate-100">Due: {new Date(t.end_date).toLocaleDateString()}</span>
@@ -556,6 +664,8 @@ export function ClassroomDetailPage() {
               </div>
             )}
           </div>
+          )}
+
         </>
       ) : null}
     </div>

@@ -22,12 +22,14 @@ export function ClassroomsPage() {
   const [joinMsg, setJoinMsg] = useState<string | null>(null)
   const [joinSuccess, setJoinSuccess] = useState(false)
   const [joinFieldErrors, setJoinFieldErrors] = useState<FieldErrors | null>(null)
+  const [showJoinForm, setShowJoinForm] = useState(false)
 
   // Create
   const [create, setCreate] = useState({ name: '', description: '' })
   const [createMsg, setCreateMsg] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState(false)
   const [createFieldErrors, setCreateFieldErrors] = useState<FieldErrors | null>(null)
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
   async function refresh() {
     setError(null)
@@ -66,6 +68,7 @@ export function ClassroomsPage() {
       setJoinMsg(res.detail)
       setJoinSuccess(true)
       setInviteCode('')
+      setShowJoinForm(false)
       await refresh()
     } catch (err: any) {
       setJoinFieldErrors(getFieldErrors(err))
@@ -96,6 +99,7 @@ export function ClassroomsPage() {
       setCreateMsg(`Created "${created.name}" · Invite code: ${created.invite_code}`)
       setCreateSuccess(true)
       setCreate({ name: '', description: '' })
+      setShowCreateForm(false)
       await refresh()
     } catch (err: any) {
       setCreateFieldErrors(getFieldErrors(err))
@@ -108,38 +112,57 @@ export function ClassroomsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Classrooms</h1>
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-700">
+            Workspace
+          </div>
+          <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900">Classrooms</h1>
           <p className="mt-1 text-sm text-slate-500">
             {student ? 'Your joined classrooms' : 'Your created classrooms'}
           </p>
         </div>
-        <button className="btn-secondary" onClick={refresh} disabled={loading}>
+        <button className="btn-secondary w-full sm:w-auto" onClick={refresh} disabled={loading}>
           Refresh
         </button>
       </div>
 
       {student ? (
         <div className="card p-6">
-          <div className="text-sm font-semibold text-slate-900">Join a classroom</div>
-          <p className="mt-1 text-sm text-slate-500">Enter the invite code provided by your teacher.</p>
-          <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onJoin}>
-            <div className="flex-1">
-              <input
-                className="input w-full"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                placeholder="Invite code"
-              />
-              {firstFieldError(joinFieldErrors, 'invite_code') && (
-                <div className="mt-1 text-xs font-medium text-red-600">
-                  {firstFieldError(joinFieldErrors, 'invite_code')}
-                </div>
-              )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-600">Join a classroom</div>
+              <p className="mt-1 text-sm text-slate-500">Enter the invite code provided by your teacher.</p>
             </div>
-            <button className="btn-primary shrink-0">
-              Join
+            <button
+              type="button"
+              className="btn-secondary w-full sm:w-auto"
+              onClick={() => {
+                setShowJoinForm((prev) => !prev)
+                setJoinFieldErrors(null)
+              }}
+            >
+              {showJoinForm ? 'Cancel' : 'Join Classroom'}
             </button>
-          </form>
+          </div>
+          {showJoinForm && (
+            <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onJoin}>
+              <div className="flex-1">
+                <input
+                  className="input w-full"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  placeholder="Invite code"
+                />
+                {firstFieldError(joinFieldErrors, 'invite_code') && (
+                  <div className="mt-1 text-xs font-medium text-red-600">
+                    {firstFieldError(joinFieldErrors, 'invite_code')}
+                  </div>
+                )}
+              </div>
+              <button className="btn-primary w-full shrink-0 sm:w-auto">
+                Join
+              </button>
+            </form>
+          )}
           {joinMsg && (
             <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${joinSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
               {joinMsg}
@@ -148,41 +171,57 @@ export function ClassroomsPage() {
         </div>
       ) : (
         <div className="card p-6">
-          <div className="text-sm font-semibold text-slate-900">Create a classroom</div>
-          <p className="mt-1 text-sm text-slate-500">Students can join using the generated invite code.</p>
-          <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={onCreate}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <label className="label">Name</label>
-              <input
-                className="input mt-1"
-                value={create.name}
-                onChange={(e) => setCreate((c) => ({ ...c, name: e.target.value }))}
-              />
-              {firstFieldError(createFieldErrors, 'name') && (
-                <div className="mt-1 text-xs font-medium text-red-600">
-                  {firstFieldError(createFieldErrors, 'name')}
-                </div>
-              )}
+              <div className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-600">Create a classroom</div>
+              <p className="mt-1 text-sm text-slate-500">Students can join using the generated invite code.</p>
             </div>
-            <div>
-              <label className="label">Description</label>
-              <input
-                className="input mt-1"
-                value={create.description}
-                onChange={(e) => setCreate((c) => ({ ...c, description: e.target.value }))}
-              />
-              {firstFieldError(createFieldErrors, 'description') && (
-                <div className="mt-1 text-xs font-medium text-red-600">
-                  {firstFieldError(createFieldErrors, 'description')}
-                </div>
-              )}
-            </div>
-            <div className="sm:col-span-2">
-              <button className="btn-primary">
-                Create
-              </button>
-            </div>
-          </form>
+            <button
+              type="button"
+              className="btn-secondary w-full sm:w-auto"
+              onClick={() => {
+                setShowCreateForm((prev) => !prev)
+                setCreateFieldErrors(null)
+              }}
+            >
+              {showCreateForm ? 'Cancel' : 'New Classroom'}
+            </button>
+          </div>
+          {showCreateForm && (
+            <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={onCreate}>
+              <div>
+                <label className="label">Name</label>
+                <input
+                  className="input mt-1"
+                  value={create.name}
+                  onChange={(e) => setCreate((c) => ({ ...c, name: e.target.value }))}
+                />
+                {firstFieldError(createFieldErrors, 'name') && (
+                  <div className="mt-1 text-xs font-medium text-red-600">
+                    {firstFieldError(createFieldErrors, 'name')}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="label">Description</label>
+                <input
+                  className="input mt-1"
+                  value={create.description}
+                  onChange={(e) => setCreate((c) => ({ ...c, description: e.target.value }))}
+                />
+                {firstFieldError(createFieldErrors, 'description') && (
+                  <div className="mt-1 text-xs font-medium text-red-600">
+                    {firstFieldError(createFieldErrors, 'description')}
+                  </div>
+                )}
+              </div>
+              <div className="sm:col-span-2">
+                <button className="btn-primary w-full sm:w-auto">
+                  Create
+                </button>
+              </div>
+            </form>
+          )}
           {createMsg && (
             <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${createSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
               {createMsg}
@@ -206,16 +245,16 @@ export function ClassroomsPage() {
           ))
         ) : items.length ? (
           items.map((c) => (
-            <Link key={c.id} to={`/classrooms/${c.id}`} className="card p-5 hover:border-brand-200 transition">
+            <Link key={c.id} to={`/classrooms/${c.id}`} className="card stagger-in p-5 hover:border-brand-200 transition">
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-slate-900">{c.name}</div>
                 <div className="mt-1 line-clamp-2 text-sm text-slate-500">{c.description}</div>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-400">
-                <span className="px-2 py-1 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1">
                   {c.created_by}
                 </span>
-                <span className="px-2 py-1 bg-brand-50 text-brand-600 rounded-lg border border-brand-100">Code: {c.invite_code}</span>
+                <span className="rounded-lg border border-brand-100 bg-brand-50 px-2 py-1 text-brand-700">Code: {c.invite_code}</span>
               </div>
             </Link>
           ))

@@ -46,6 +46,7 @@ export type Task = {
   status: string
   mode: string
   task_type: string
+  assessment_component: 'theory' | 'lab'
 }
 
 export type TaskRecord = {
@@ -63,7 +64,25 @@ export type TaskRecord = {
 
 export type GradebookData = {
   classroom: { id: string; name: string }
-  tasks: { id: string; name: string; full_marks: number }[]
+  active_component_filter?: 'theory' | 'lab' | null
+  tasks: {
+    id: string
+    name: string
+    full_marks: number
+    task_type: string
+    assessment_component: 'theory' | 'lab'
+  }[]
+  weightage_config: {
+    assessment_component: 'theory' | 'lab'
+    task_type: string
+    include_in_final: boolean
+    weightage: number
+  }[]
+  total_configured_weightage: number
+  total_configured_weightage_by_component?: {
+    theory: number
+    lab: number
+  }
   students: {
     id: string
     username: string
@@ -71,6 +90,35 @@ export type GradebookData = {
     marks: Record<string, number>
     total_obtained: number
     total_full_marks: number
+    final_marks: number
+    component_totals: {
+      theory: { obtained: number; full_marks: number }
+      lab: { obtained: number; full_marks: number }
+    }
+  }[]
+}
+
+export type ClassroomWeightageConfig = {
+  classroom: { id: string; name: string }
+  weightages: {
+    assessment_component: 'theory' | 'lab'
+    task_type: string
+    include_in_final: boolean
+    weightage: number
+  }[]
+  total_configured_weightage: number
+  total_configured_weightage_by_component?: {
+    theory: number
+    lab: number
+  }
+}
+
+export type ClassroomWeightageConfigPayload = {
+  weightages: {
+    assessment_component: 'theory' | 'lab'
+    task_type: string
+    include_in_final: boolean
+    weightage: number
   }[]
 }
 

@@ -63,18 +63,19 @@ export function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 p-8 sm:p-10 text-white">
+      <div className="card-premium p-5 sm:p-8 md:p-10">
         <div className="relative z-10">
-          <h1 className="text-3xl font-extrabold tracking-tight">Welcome back, {user?.first_name || user?.username}!</h1>
-          <p className="mt-2 text-brand-200 text-sm">You have {classrooms.length} active classroom{classrooms.length !== 1 ? 's' : ''}.</p>
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-700">
+            Overview
+          </div>
+          <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Welcome back, {user?.first_name || user?.username}!</h1>
+          <p className="mt-2 text-sm text-slate-700">You have {classrooms.length} active classroom{classrooms.length !== 1 ? 's' : ''}.</p>
           <div className="mt-6">
-            <Link to="/classrooms" className="btn bg-white text-brand-700 hover:bg-brand-50 shadow-sm">
+            <Link to="/classrooms" className="btn-primary w-full sm:w-auto">
               View Classrooms
             </Link>
           </div>
         </div>
-        <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-10 -left-10 h-56 w-56 rounded-full bg-brand-400/20 blur-3xl" />
       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
@@ -94,7 +95,7 @@ export function DashboardPage() {
               <div className="grid gap-3">
                 {deadlines.length > 0 ? (
                   deadlines.map((t) => (
-                    <Link key={t.id} to={`/tasks/${t.id}`} className="card flex items-center justify-between p-5 group hover:border-brand-200">
+                    <Link key={t.id} to={`/tasks/${t.id}`} className="card stagger-in flex flex-col items-start justify-between gap-3 p-5 group hover:border-brand-200 sm:flex-row sm:items-center">
                       <div>
                         <div className="text-sm font-semibold text-slate-900 group-hover:text-brand-600 transition-colors">
                           {t.name}
@@ -112,7 +113,7 @@ export function DashboardPage() {
               <div className="grid gap-3">
                 {pendingEvals.length > 0 ? (
                   pendingEvals.map((item, idx) => (
-                    <Link key={idx} to={`/tasks/${item.task.id}`} className="card flex items-center justify-between p-5 group hover:border-brand-200">
+                    <Link key={idx} to={`/tasks/${item.task.id}`} className="card stagger-in flex flex-col items-start justify-between gap-3 p-5 group hover:border-brand-200 sm:flex-row sm:items-center">
                       <div>
                         <div className="text-sm font-semibold text-slate-900 group-hover:text-brand-600 transition-colors">
                           {item.record.student_username || item.record.student} — {item.task.name}
@@ -134,11 +135,11 @@ export function DashboardPage() {
           {/* Stats */}
           <section className="grid gap-4 sm:grid-cols-2">
             <div className="card p-5">
-              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Classrooms</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Active Classrooms</div>
               <div className="mt-2 text-3xl font-extrabold text-slate-900">{classrooms.length}</div>
             </div>
-            <div className="card p-5 border-l-2 border-l-amber-400">
-              <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Updates</div>
+            <div className="card p-5">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Updates</div>
               <div className="mt-2 text-3xl font-extrabold text-slate-900">0</div>
             </div>
           </section>
@@ -147,9 +148,9 @@ export function DashboardPage() {
         {/* Sidebar */}
         <aside className="space-y-6">
           <div className="card p-6">
-            <h3 className="text-sm font-semibold text-slate-900">Your Profile</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-600">Your Profile</h3>
             <div className="mt-5 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-brand-600 text-white grid place-items-center font-bold text-lg">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 text-lg font-bold text-white">
                 {user?.username.charAt(0).toUpperCase()}
               </div>
               <div>
