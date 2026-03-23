@@ -420,6 +420,16 @@ export function TaskDetailPage() {
                     {TASK_MODE_CHOICES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="label">Type</label>
+                  <select
+                    className="input"
+                    value={editForm.task_type ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, task_type: e.target.value }))}
+                  >
+                    {TASK_TYPE_CHOICES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
               </div>
               {editMsg && (
                 <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
@@ -454,14 +464,18 @@ export function TaskDetailPage() {
                     <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Teacher</dt>
                     <dd className="mt-1 font-medium text-slate-900 text-sm">@{task.created_by}</dd>
                   </div>
-                  <div className="flex justify-between gap-4">
-                    <div>
-                      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Full Marks</dt>
-                      <dd className="mt-1 font-bold text-brand-700 text-2xl">{task.full_marks}</dd>
-                    </div>
+                  <div>
+                    <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Full Marks</dt>
+                    <dd className="mt-1 font-bold text-brand-700 text-2xl">{task.full_marks}</dd>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
                     <div>
                       <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mode</dt>
-                      <dd className="mt-1 font-medium text-slate-900 capitalize text-sm px-3 py-1 bg-slate-50 rounded-lg border border-slate-100">{task.mode}</dd>
+                      <dd className={`mt-1 font-medium text-sm px-3 py-1 rounded-lg border ${task.mode === 'online' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{choiceLabel(TASK_MODE_CHOICES, task.mode)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wider">Type</dt>
+                      <dd className="mt-1 font-medium text-slate-900 text-sm px-3 py-1 bg-slate-50 rounded-lg border border-slate-100">{choiceLabel(TASK_TYPE_CHOICES, task.task_type)}</dd>
                     </div>
                   </div>
                   <div>

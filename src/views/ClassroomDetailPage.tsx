@@ -547,6 +547,7 @@ export function ClassroomDetailPage() {
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span className="rounded bg-slate-50 px-2 py-1 border border-slate-100">{choiceLabel(TASK_TYPE_CHOICES, t.task_type)}</span>
+                      <span className={`rounded px-2 py-1 border font-medium ${t.mode === 'online' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{choiceLabel(TASK_MODE_CHOICES, t.mode)}</span>
                       <span className="rounded bg-slate-50 px-2 py-1 border border-slate-100">FM: {t.full_marks}</span>
                       <span className="rounded bg-slate-50 px-2 py-1 border border-slate-100">Due: {new Date(t.end_date).toLocaleDateString()}</span>
                     </div>
