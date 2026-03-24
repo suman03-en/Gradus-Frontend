@@ -79,6 +79,11 @@ export type GradebookData = {
     include_in_final: boolean
     weightage: number
   }[]
+  attendance_weightage_config?: {
+    assessment_component: 'theory' | 'lab'
+    include_in_final: boolean
+    weightage: number
+  }[]
   total_configured_weightage: number
   total_configured_weightage_by_component?: {
     theory: number
@@ -96,6 +101,10 @@ export type GradebookData = {
       theory: { obtained: number; full_marks: number }
       lab: { obtained: number; full_marks: number }
     }
+    attendance?: {
+      theory: { present: number; total: number; percentage: number }
+      lab: { present: number; total: number; percentage: number }
+    }
   }[]
 }
 
@@ -104,6 +113,11 @@ export type ClassroomWeightageConfig = {
   weightages: {
     assessment_component: 'theory' | 'lab'
     task_type: string
+    include_in_final: boolean
+    weightage: number
+  }[]
+  attendance_weightages?: {
+    assessment_component: 'theory' | 'lab'
     include_in_final: boolean
     weightage: number
   }[]
@@ -121,6 +135,42 @@ export type ClassroomWeightageConfigPayload = {
     include_in_final: boolean
     weightage: number
   }[]
+  attendance_weightages?: {
+    assessment_component: 'theory' | 'lab'
+    include_in_final: boolean
+    weightage: number
+  }[]
+}
+
+export type AttendanceRecordItem = {
+  student_id: string
+  username: string
+  roll_no: string
+  is_present: boolean
+}
+
+export type AttendanceSessionItem = {
+  id: string
+  date: string
+  assessment_component: 'theory' | 'lab'
+  note: string
+  records: AttendanceRecordItem[]
+}
+
+export type AttendanceSummaryItem = {
+  student_id: string
+  username: string
+  roll_no: string
+  present: number
+  total: number
+  percentage: number
+}
+
+export type ClassroomAttendanceResponse = {
+  classroom: { id: string; name: string }
+  is_teacher: boolean
+  attendance_summary: AttendanceSummaryItem[]
+  sessions: AttendanceSessionItem[]
 }
 
 export type Resource = {
