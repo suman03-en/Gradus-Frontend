@@ -40,6 +40,9 @@ export function ClassroomDetailPage() {
   // Tasks
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
+  const [deadlineFilter, setDeadlineFilter] = useState<'all' | 'upcoming' | 'overdue'>('all')
+  const [componentFilter, setComponentFilter] = useState<'all' | 'theory' | 'lab'>('all')
+  const [taskTypeFilter, setTaskTypeFilter] = useState<'all' | Task['task_type']>('all')
 
   const [gradebook, setGradebook] = useState<GradebookData | null>(null)
   const [gbLoading, setGbLoading] = useState(false)
@@ -62,6 +65,12 @@ export function ClassroomDetailPage() {
   const [addStudentSuccess, setAddStudentSuccess] = useState(false)
   const [showAddStudentForm, setShowAddStudentForm] = useState(false)
 
+  // Add co-teacher form (owner only)
+  const [teacherUsername, setTeacherUsername] = useState('')
+  const [addTeacherMsg, setAddTeacherMsg] = useState<string | null>(null)
+  const [addTeacherSuccess, setAddTeacherSuccess] = useState(false)
+  const [showAddTeacherForm, setShowAddTeacherForm] = useState(false)
+
   // Create task form (teacher only)
   const [showCreateTask, setShowCreateTask] = useState(false)
   const [activeTab, setActiveTab] = useState<ClassroomTab>('overview')
@@ -79,21 +88,29 @@ export function ClassroomDetailPage() {
   const [createTaskSuccess, setCreateTaskSuccess] = useState(false)
   const [createTaskFieldErrors, setCreateTaskFieldErrors] = useState<FieldErrors | null>(null)
 
+  const isOwnerTeacher = useMemo(() => {
+    return !isStudent && !!item && user?.username === item.created_by
+  }, [isStudent, item, user])
+
+  const refreshClassroom = useCallback(async () => {
+    const data = await apiJson<Classroom>(`/api/v1/classrooms/${id}/`)
+    setItem(data)
+    setEditForm({ name: data.name, description: data.description })
+  }, [id])
+
   useEffect(() => {
     ;(async () => {
       setError(null)
       setLoading(true)
       try {
-        const data = await apiJson<Classroom>(`/api/v1/classrooms/${id}/`)
-        setItem(data)
-        setEditForm({ name: data.name, description: data.description })
+        await refreshClassroom()
       } catch (e: any) {
         setError(e?.message ?? 'Failed to load classroom')
       } finally {
         setLoading(false)
       }
     })()
-  }, [id])
+  }, [refreshClassroom])
 
   const fetchTasks = useCallback(async () => {
     setTasksLoading(true)
@@ -110,6 +127,30 @@ export function ClassroomDetailPage() {
   useEffect(() => {
     fetchTasks()
   }, [fetchTasks])
+
+  const filteredTasks = useMemo(() => {
+    const now = new Date()
+
+    return tasks.filter((task) => {
+      if (componentFilter !== 'all' && task.assessment_component !== componentFilter) {
+        return false
+      }
+
+      if (taskTypeFilter !== 'all' && task.task_type !== taskTypeFilter) {
+        return false
+      }
+
+      const dueDate = new Date(task.end_date)
+      if (deadlineFilter === 'upcoming' && dueDate < now) {
+        return false
+      }
+      if (deadlineFilter === 'overdue' && dueDate >= now) {
+        return false
+      }
+
+      return true
+    })
+  }, [tasks, deadlineFilter, componentFilter, taskTypeFilter])
 
   useEffect(() => {
     if (activeTab === 'students' && !gradebook) {
@@ -181,6 +222,26 @@ export function ClassroomDetailPage() {
     } catch (err: any) {
       setAddStudentMsg(err?.message ?? 'Add student failed')
       setAddStudentSuccess(false)
+    }
+  }
+
+  async function onAddTeacher(e: React.FormEvent) {
+    e.preventDefault()
+    setAddTeacherMsg(null)
+    setAddTeacherSuccess(false)
+    try {
+      const res = await apiJson<{ detail: string }>(`/api/v1/classrooms/${id}/teachers/`, {
+        method: 'POST',
+        body: { username: teacherUsername.trim() },
+      })
+      setAddTeacherMsg(res.detail)
+      setAddTeacherSuccess(true)
+      setTeacherUsername('')
+      setShowAddTeacherForm(false)
+      await refreshClassroom()
+    } catch (err: any) {
+      setAddTeacherMsg(err?.message ?? 'Add teacher failed')
+      setAddTeacherSuccess(false)
     }
   }
 
@@ -292,12 +353,16 @@ export function ClassroomDetailPage() {
             <Link to={`/classrooms/${id}/gradebook`} className="btn-primary flex-1 sm:flex-none">
               Gradebook
             </Link>
-            <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
-              {editing ? 'Cancel' : 'Edit'}
-            </button>
-            <button className="btn-danger flex-1 sm:flex-none" onClick={onDeleteClassroom}>
-              Delete
-            </button>
+            {isOwnerTeacher && (
+              <>
+                <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
+                  {editing ? 'Cancel' : 'Edit'}
+                </button>
+                <button className="btn-danger flex-1 sm:flex-none" onClick={onDeleteClassroom}>
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex w-full gap-2 sm:w-auto">
@@ -336,81 +401,129 @@ export function ClassroomDetailPage() {
           </div>
 
           {activeTab === 'overview' && (
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="lg:col-span-2">
-                {editing ? (
-                  <form className="card p-6 space-y-4" onSubmit={onSaveClassroom}>
-                    <div className="text-sm font-semibold text-slate-900">Edit Classroom</div>
-                    <div>
-                      <label className="label">Name</label>
-                      <input
-                        className="input mt-1"
-                        value={editForm.name}
-                        onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
-                      />
-                      {firstFieldError(editFieldErrors, 'name') && (
-                        <div className="mt-1 text-xs font-medium text-red-600">
-                          {firstFieldError(editFieldErrors, 'name')}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="label">Description</label>
-                      <textarea
-                        className="textarea"
-                        value={editForm.description}
-                        onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
-                      />
-                      {firstFieldError(editFieldErrors, 'description') && (
-                        <div className="mt-1 text-xs font-medium text-red-600">
-                          {firstFieldError(editFieldErrors, 'description')}
-                        </div>
-                      )}
-                    </div>
-                    {editMsg && (
-                      <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
-                        {editMsg}
-                      </div>
-                    )}
-                    <button className="btn-primary">Save Changes</button>
-                  </form>
-                ) : (
-                  <div className="card p-6 h-full">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-3">
+                <div className="lg:col-span-2">
+                  {editing ? (
+                    <form className="card p-6 space-y-4" onSubmit={onSaveClassroom}>
+                      <div className="text-sm font-semibold text-slate-900">Edit Classroom</div>
                       <div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Name</div>
-                        <div className="mt-1 text-xl font-bold text-slate-900">{item.name}</div>
+                        <label className="label">Name</label>
+                        <input
+                          className="input mt-1"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                        />
+                        {firstFieldError(editFieldErrors, 'name') && (
+                          <div className="mt-1 text-xs font-medium text-red-600">
+                            {firstFieldError(editFieldErrors, 'name')}
+                          </div>
+                        )}
                       </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-5 py-3">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Invite Code</div>
-                        <div className="mt-0.5 text-lg font-bold text-brand-700 tracking-widest">{item.invite_code}</div>
+                      <div>
+                        <label className="label">Description</label>
+                        <textarea
+                          className="textarea"
+                          value={editForm.description}
+                          onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
+                        />
+                        {firstFieldError(editFieldErrors, 'description') && (
+                          <div className="mt-1 text-xs font-medium text-red-600">
+                            {firstFieldError(editFieldErrors, 'description')}
+                          </div>
+                        )}
+                      </div>
+                      {editMsg && (
+                        <div className={`rounded-xl border px-3 py-2 text-sm ${editSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                          {editMsg}
+                        </div>
+                      )}
+                      <button className="btn-primary">Save Changes</button>
+                    </form>
+                  ) : (
+                    <div className="card p-6 h-full">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Name</div>
+                          <div className="mt-1 text-xl font-bold text-slate-900">{item.name}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white px-5 py-3">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Invite Code</div>
+                          <div className="mt-0.5 text-lg font-bold text-brand-700 tracking-widest">{item.invite_code}</div>
+                        </div>
+                      </div>
+                      <div className="mt-8">
+                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</div>
+                        <div className="mt-2 text-sm text-slate-600 leading-relaxed">{item.description}</div>
                       </div>
                     </div>
-                    <div className="mt-8">
-                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Description</div>
-                      <div className="mt-2 text-sm text-slate-600 leading-relaxed">{item.description}</div>
+                  )}
+                </div>
+
+                <aside className="card p-6">
+                  <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Details</div>
+                  <dl className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Lead Teacher</dt>
+                      <dd className="font-medium text-slate-900">{item.created_by}</dd>
                     </div>
-                  </div>
-                )}
+                    <div>
+                      <dt className="text-slate-500">All Teachers</dt>
+                      <dd className="mt-2 flex flex-wrap gap-2">
+                        {(item.teachers ?? []).map((teacher) => (
+                          <span key={teacher} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
+                            @{teacher}
+                          </span>
+                        ))}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Students</dt>
+                      <dd className="font-medium text-slate-900">{item.students?.length ?? 0}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-slate-500">Created</dt>
+                      <dd className="font-medium text-slate-900">{new Date(item.created_at).toLocaleString()}</dd>
+                    </div>
+                  </dl>
+                </aside>
               </div>
 
-              <aside className="card p-6">
-                <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Details</div>
-                <dl className="mt-4 space-y-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-slate-500">Teacher</dt>
-                    <dd className="font-medium text-slate-900">{item.created_by}</dd>
+              {!isStudent && isOwnerTeacher && (
+                <div className="card p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Add Co-Teacher</div>
+                      <p className="mt-1 text-sm text-slate-500">Add another teacher by username to co-manage this classroom.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary w-full sm:w-auto"
+                      onClick={() => setShowAddTeacherForm((prev) => !prev)}
+                    >
+                      {showAddTeacherForm ? 'Cancel' : 'Add Co-Teacher'}
+                    </button>
                   </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-slate-500">Students</dt>
-                    <dd className="font-medium text-slate-900">{item.students?.length ?? 0}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-slate-500">Created</dt>
-                    <dd className="font-medium text-slate-900">{new Date(item.created_at).toLocaleString()}</dd>
-                  </div>
-                </dl>
-              </aside>
+                  {showAddTeacherForm && (
+                    <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={onAddTeacher}>
+                      <input
+                        className="input flex-1"
+                        value={teacherUsername}
+                        onChange={(e) => setTeacherUsername(e.target.value)}
+                        placeholder="Teacher username"
+                      />
+                      <button className="btn-primary w-full sm:w-auto" disabled={!teacherUsername.trim()}>
+                        Add Teacher
+                      </button>
+                    </form>
+                  )}
+                  {addTeacherMsg && (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${addTeacherSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                      {addTeacherMsg}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -504,6 +617,51 @@ export function ClassroomDetailPage() {
                     {showCreateTask ? 'Cancel' : '+ Create Task'}
                   </button>
                 )}
+              </div>
+            </div>
+
+            <div className="card p-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="label">Deadline</label>
+                  <select
+                    className="input mt-1"
+                    value={deadlineFilter}
+                    onChange={(e) => setDeadlineFilter(e.target.value as 'all' | 'upcoming' | 'overdue')}
+                  >
+                    <option value="all">All</option>
+                    <option value="upcoming">Upcoming</option>
+                    <option value="overdue">Overdue</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label">Component</label>
+                  <select
+                    className="input mt-1"
+                    value={componentFilter}
+                    onChange={(e) => setComponentFilter(e.target.value as 'all' | 'theory' | 'lab')}
+                  >
+                    <option value="all">All</option>
+                    {TASK_COMPONENT_CHOICES.map((choice) => (
+                      <option key={choice.value} value={choice.value}>{choice.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label">Task Type</label>
+                  <select
+                    className="input mt-1"
+                    value={taskTypeFilter}
+                    onChange={(e) => setTaskTypeFilter(e.target.value as 'all' | Task['task_type'])}
+                  >
+                    <option value="all">All</option>
+                    {TASK_TYPE_CHOICES.map((choice) => (
+                      <option key={choice.value} value={choice.value}>{choice.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -639,9 +797,16 @@ export function ClassroomDetailPage() {
                   {isStudent ? 'No tasks have been assigned yet.' : 'Create your first task above.'}
                 </div>
               </div>
+            ) : filteredTasks.length === 0 ? (
+              <div className="card p-6">
+                <div className="text-sm font-medium text-slate-900">No tasks match the current filters</div>
+                <div className="mt-1 text-sm text-slate-500">
+                  Try adjusting deadline, component, or task type.
+                </div>
+              </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {tasks.map((t) => (
+                {filteredTasks.map((t) => (
                   <Link key={t.id} to={`/tasks/${t.id}`} state={{ fromClassroomTasksTab: true, classroomId: id }} className="card p-5 hover:border-brand-200 transition">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">

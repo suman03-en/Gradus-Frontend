@@ -28,6 +28,7 @@ export type Classroom = {
   name: string
   description: string
   created_by: string
+  teachers: string[]
   invite_code: string
   created_at: string
   students: string[]

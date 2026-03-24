@@ -4,6 +4,16 @@ export type ApiError = {
   details?: unknown
 }
 
+/**
+ * Cache configuration for API calls.
+ * Set enableCache to true to cache GET requests.
+ */
+export type ApiCacheOptions = {
+  enableCache?: boolean
+  ttlSeconds?: number
+  cacheKey?: string
+}
+
 function userFriendlyHttpMessage(status: number): string | null {
   if (status === 401) return 'Please login first to continue.'
   if (status === 403) return 'You are not allowed to view this or perform this action.'
@@ -65,6 +75,42 @@ export async function apiJson<T>(
     method?: string
     body?: unknown
     headers?: Record<string, string>
+    cache?: ApiCacheOptions
+  },
+): Promise<T> {
+  // Handle caching for GET requests
+  if (opts?.cache?.enableCache) {
+    const { localCache, CACHE_TTL } = await import('./cache')
+    const method = (opts?.method ?? 'GET').toUpperCase()
+    
+    if (method === 'GET') {
+      const cacheKey = opts.cache.cacheKey || path
+      const ttl = opts.cache.ttlSeconds ?? CACHE_TTL.MEDIUM
+      
+      // Try to get from cache
+      const cached = localCache.get<T>(cacheKey)
+      if (cached !== null) {
+        return cached
+      }
+      
+      // Fetch and cache
+      const data = await apiFetchJson<T>(path, opts)
+      localCache.set(cacheKey, data, ttl)
+      return data
+    }
+  }
+
+  // Non-cached request
+  return apiFetchJson<T>(path, opts)
+}
+
+async function apiFetchJson<T>(
+  path: string,
+  opts?: {
+    method?: string
+    body?: unknown
+    headers?: Record<string, string>
+    cache?: ApiCacheOptions
   },
 ): Promise<T> {
   const method = (opts?.method ?? 'GET').toUpperCase()

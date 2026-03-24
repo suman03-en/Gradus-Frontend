@@ -117,7 +117,7 @@ export function ClassroomsPage() {
           </div>
           <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900">Classrooms</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {student ? 'Your joined classrooms' : 'Your created classrooms'}
+            {student ? 'Your joined classrooms' : 'Your classrooms as lead or co-teacher'}
           </p>
         </div>
         <button className="btn-secondary w-full sm:w-auto" onClick={refresh} disabled={loading}>
@@ -252,7 +252,10 @@ export function ClassroomsPage() {
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-400">
                 <span className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1">
-                  {c.created_by}
+                  Lead: {c.created_by}
+                </span>
+                <span className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1 text-slate-600">
+                  Teachers: {c.teachers?.length ?? 1}
                 </span>
                 <span className="rounded-lg border border-brand-100 bg-brand-50 px-2 py-1 text-brand-700">Code: {c.invite_code}</span>
               </div>
