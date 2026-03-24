@@ -18,8 +18,11 @@ interface CacheEntry<T> {
 export class CacheManager {
   private static readonly VERSION = 'v1'
   private static readonly STORAGE_PREFIX = 'gradus_cache'
+  private storageType: CacheStorageType
 
-  constructor(private storageType: CacheStorageType = 'localStorage') {}
+  constructor(storageType: CacheStorageType = 'localStorage') {
+    this.storageType = storageType
+  }
 
   /**
    * Get storage instance.
