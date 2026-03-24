@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
+import { useAuth } from '../state/auth'
 
 const highlights = [
   {
@@ -16,6 +17,13 @@ const highlights = [
 ]
 
 export function LandingPage() {
+  const { user } = useAuth()
+
+  // Redirect authenticated users to dashboard
+  if (user) {
+    return <Navigate to="/dashboard" replace />
+  }
+
   return (
     <div className="space-y-8 md:space-y-10">
       <section className="card-premium surface-rise p-7 md:p-10">
