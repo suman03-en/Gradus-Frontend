@@ -24,8 +24,9 @@ export function GradebookPage() {
   const { id } = useParams()
   const { user } = useAuth()
   const isStudent = useMemo(() => !!(user?.profile && 'roll_no' in user.profile), [user])
-  const [componentFilter, setComponentFilter] = useState<'theory' | 'lab'>('theory')
+  const [exportComponent, setExportComponent] = useState<'theory' | 'lab'>('theory')
   const [weightageComponent, setWeightageComponent] = useState<'theory' | 'lab'>('theory')
+  const [studentSearchRollNo, setStudentSearchRollNo] = useState('')
 
   const [data, setData] = useState<GradebookData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,10 +56,10 @@ export function GradebookPage() {
     setError(null)
     try {
       const { blob, contentDisposition } = await apiBlob(
-        `/api/v1/classrooms/${id}/gradebook/export-excel/?component=${componentFilter}`,
+        `/api/v1/classrooms/${id}/gradebook/export-excel/?component=${exportComponent}`,
       )
 
-      const fallbackFilename = `${classroom.name.replace(/\s+/g, '_')}_${componentFilter}_marks.xlsx`
+      const fallbackFilename = `${classroom.name.replace(/\s+/g, '_')}_${exportComponent}_marks.xlsx`
       const filename = extractFilename(contentDisposition, fallbackFilename)
 
       const url = window.URL.createObjectURL(blob)
@@ -80,7 +81,7 @@ export function GradebookPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await apiJson<GradebookData>(`/api/v1/classrooms/${id}/gradebook/?component=${componentFilter}`)
+      const res = await apiJson<GradebookData>(`/api/v1/classrooms/${id}/gradebook/`)
       setData(res)
     } catch (e: any) {
       console.error('Gradebook load error', e)
@@ -88,7 +89,7 @@ export function GradebookPage() {
     } finally {
       setLoading(false)
     }
-  }, [id, componentFilter])
+  }, [id])
 
   const fetchWeightages = useCallback(async () => {
     setWeightageLoading(true)
@@ -209,10 +210,17 @@ export function GradebookPage() {
     }
   }
 
+  const students = data?.students ?? []
+  const filteredStudents = useMemo(() => {
+    const query = studentSearchRollNo.trim().toLowerCase()
+    if (!query) return students
+    return students.filter((student) => student.roll_no.toLowerCase().includes(query))
+  }, [students, studentSearchRollNo])
+
   if (loading) return <div className="card p-8 animate-pulse text-center text-sm text-slate-500">Loading Gradebook...</div>
   if (error || !data) return <div className="text-red-600 text-sm">{error ?? 'Failed to load gradebook.'}</div>
 
-  const { classroom, tasks, students } = data
+  const { classroom, tasks } = data
   const selectedWeightageLabel =
     TASK_COMPONENT_CHOICES.find((choice) => choice.value === weightageComponent)?.label ?? 'Theory'
   const selectedWeightageTone = weightageComponent === 'lab'
@@ -239,8 +247,8 @@ export function GradebookPage() {
               <div className="text-lg font-bold text-slate-900">{tasks.length}</div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Current View</div>
-              <div className="text-lg font-bold text-slate-900">{componentFilter === 'lab' ? 'Lab' : 'Theory'}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Export Component</div>
+              <div className="text-lg font-bold text-slate-900">{exportComponent === 'lab' ? 'Lab' : 'Theory'}</div>
             </div>
           </div>
         </div>
@@ -260,11 +268,11 @@ export function GradebookPage() {
         {activeTab === 'overview' && (
           <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
             <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Component (View + Export)</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Component (Export only)</div>
               <select
                 className="input mt-2"
-                value={componentFilter}
-                onChange={(e) => setComponentFilter(e.target.value as 'theory' | 'lab')}
+                value={exportComponent}
+                onChange={(e) => setExportComponent(e.target.value as 'theory' | 'lab')}
               >
                 {TASK_COMPONENT_CHOICES.map((choice) => (
                   <option key={choice.value} value={choice.value}>{choice.label}</option>
@@ -403,7 +411,25 @@ export function GradebookPage() {
           <div className="card p-8 text-center text-slate-500 text-sm">No students found.</div>
         ) : (
           <div className="space-y-6">
-            {students.map((student) => {
+            <div className="card p-4 sm:p-5">
+              <label className="label">Search by Roll No</label>
+              <input
+                className="input mt-2"
+                type="text"
+                value={studentSearchRollNo}
+                onChange={(e) => setStudentSearchRollNo(e.target.value.toUpperCase())}
+                placeholder="e.g. THA079BEI042"
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                Showing {filteredStudents.length} of {students.length} student(s).
+              </p>
+            </div>
+
+            {filteredStudents.length === 0 ? (
+              <div className="card p-6 text-sm text-slate-500">
+                No students matched roll number "{studentSearchRollNo}".
+              </div>
+            ) : filteredStudents.map((student) => {
               const percentage = student.total_full_marks > 0
                 ? Math.round((student.total_obtained / student.total_full_marks) * 100)
                 : 0
