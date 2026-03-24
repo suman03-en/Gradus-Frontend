@@ -514,9 +514,6 @@ export function ClassroomDetailPage() {
             <Link to={`/classrooms/${id}/gradebook`} className="btn-primary w-full sm:w-auto">
               My Grades
             </Link>
-            <button className="btn-secondary w-full sm:w-auto" onClick={() => setActiveTab('attendance')}>
-              My Attendance
-            </button>
           </div>
         )}
       </div>
