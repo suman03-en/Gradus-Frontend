@@ -62,6 +62,12 @@ export function ClassroomDetailPage() {
   const [addStudentSuccess, setAddStudentSuccess] = useState(false)
   const [showAddStudentForm, setShowAddStudentForm] = useState(false)
 
+  // Add co-teacher form (owner only)
+  const [teacherUsername, setTeacherUsername] = useState('')
+  const [addTeacherMsg, setAddTeacherMsg] = useState<string | null>(null)
+  const [addTeacherSuccess, setAddTeacherSuccess] = useState(false)
+  const [showAddTeacherForm, setShowAddTeacherForm] = useState(false)
+
   // Create task form (teacher only)
   const [showCreateTask, setShowCreateTask] = useState(false)
   const [activeTab, setActiveTab] = useState<ClassroomTab>('overview')
@@ -79,21 +85,29 @@ export function ClassroomDetailPage() {
   const [createTaskSuccess, setCreateTaskSuccess] = useState(false)
   const [createTaskFieldErrors, setCreateTaskFieldErrors] = useState<FieldErrors | null>(null)
 
+  const isOwnerTeacher = useMemo(() => {
+    return !isStudent && !!item && user?.username === item.created_by
+  }, [isStudent, item, user])
+
+  const refreshClassroom = useCallback(async () => {
+    const data = await apiJson<Classroom>(`/api/v1/classrooms/${id}/`)
+    setItem(data)
+    setEditForm({ name: data.name, description: data.description })
+  }, [id])
+
   useEffect(() => {
     ;(async () => {
       setError(null)
       setLoading(true)
       try {
-        const data = await apiJson<Classroom>(`/api/v1/classrooms/${id}/`)
-        setItem(data)
-        setEditForm({ name: data.name, description: data.description })
+        await refreshClassroom()
       } catch (e: any) {
         setError(e?.message ?? 'Failed to load classroom')
       } finally {
         setLoading(false)
       }
     })()
-  }, [id])
+  }, [refreshClassroom])
 
   const fetchTasks = useCallback(async () => {
     setTasksLoading(true)
@@ -181,6 +195,26 @@ export function ClassroomDetailPage() {
     } catch (err: any) {
       setAddStudentMsg(err?.message ?? 'Add student failed')
       setAddStudentSuccess(false)
+    }
+  }
+
+  async function onAddTeacher(e: React.FormEvent) {
+    e.preventDefault()
+    setAddTeacherMsg(null)
+    setAddTeacherSuccess(false)
+    try {
+      const res = await apiJson<{ detail: string }>(`/api/v1/classrooms/${id}/teachers/`, {
+        method: 'POST',
+        body: { username: teacherUsername.trim() },
+      })
+      setAddTeacherMsg(res.detail)
+      setAddTeacherSuccess(true)
+      setTeacherUsername('')
+      setShowAddTeacherForm(false)
+      await refreshClassroom()
+    } catch (err: any) {
+      setAddTeacherMsg(err?.message ?? 'Add teacher failed')
+      setAddTeacherSuccess(false)
     }
   }
 
@@ -292,12 +326,16 @@ export function ClassroomDetailPage() {
             <Link to={`/classrooms/${id}/gradebook`} className="btn-primary flex-1 sm:flex-none">
               Gradebook
             </Link>
-            <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
-              {editing ? 'Cancel' : 'Edit'}
-            </button>
-            <button className="btn-danger flex-1 sm:flex-none" onClick={onDeleteClassroom}>
-              Delete
-            </button>
+            {isOwnerTeacher && (
+              <>
+                <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
+                  {editing ? 'Cancel' : 'Edit'}
+                </button>
+                <button className="btn-danger flex-1 sm:flex-none" onClick={onDeleteClassroom}>
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex w-full gap-2 sm:w-auto">
@@ -398,8 +436,18 @@ export function ClassroomDetailPage() {
                 <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Details</div>
                 <dl className="mt-4 space-y-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <dt className="text-slate-500">Teacher</dt>
+                    <dt className="text-slate-500">Lead Teacher</dt>
                     <dd className="font-medium text-slate-900">{item.created_by}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">All Teachers</dt>
+                    <dd className="mt-2 flex flex-wrap gap-2">
+                      {(item.teachers ?? []).map((teacher) => (
+                        <span key={teacher} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
+                          @{teacher}
+                        </span>
+                      ))}
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <dt className="text-slate-500">Students</dt>
@@ -416,6 +464,42 @@ export function ClassroomDetailPage() {
 
           {activeTab === 'students' && (
             <div className="space-y-6">
+              {!isStudent && isOwnerTeacher && (
+                <div className="card p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Add Co-Teacher</div>
+                      <p className="mt-1 text-sm text-slate-500">Add another teacher by username to co-manage this classroom.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary w-full sm:w-auto"
+                      onClick={() => setShowAddTeacherForm((prev) => !prev)}
+                    >
+                      {showAddTeacherForm ? 'Cancel' : 'Add Co-Teacher'}
+                    </button>
+                  </div>
+                  {showAddTeacherForm && (
+                    <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={onAddTeacher}>
+                      <input
+                        className="input flex-1"
+                        value={teacherUsername}
+                        onChange={(e) => setTeacherUsername(e.target.value)}
+                        placeholder="Teacher username"
+                      />
+                      <button className="btn-primary w-full sm:w-auto" disabled={!teacherUsername.trim()}>
+                        Add Teacher
+                      </button>
+                    </form>
+                  )}
+                  {addTeacherMsg && (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${addTeacherSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                      {addTeacherMsg}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {!isStudent && (
                 <div className="card p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
