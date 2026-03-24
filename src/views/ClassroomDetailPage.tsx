@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
-import { apiJson } from '../lib/api'
+import { apiFormData, apiJson } from '../lib/api'
 import type {
   Classroom,
   Task,
@@ -61,14 +61,8 @@ export function ClassroomDetailPage() {
   const [attendanceComponent, setAttendanceComponent] = useState<'theory' | 'lab'>('theory')
   const [attendanceNote, setAttendanceNote] = useState('')
   const [attendanceMarks, setAttendanceMarks] = useState<Record<string, boolean>>({})
-  const [bulkSessions, setBulkSessions] = useState<
-    Array<{
-      date: string
-      assessment_component: 'theory' | 'lab'
-      note: string
-      entries: Array<{ student_id: string; is_present: boolean }>
-    }>
-  >([])
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvUploading, setCsvUploading] = useState(false)
 
   const fetchGradebook = useCallback(async () => {
     setGbLoading(true)
@@ -347,66 +341,50 @@ export function ClassroomDetailPage() {
     }
   }
 
-  async function onQueueAttendanceBulk(e: React.FormEvent) {
-    e.preventDefault()
+  async function onUploadAttendanceCsv() {
     setAttendanceMsg(null)
     setAttendanceSuccess(false)
 
-    if (!attendanceDate) {
-      setAttendanceMsg('Please choose attendance date before adding to bulk queue.')
-      return
-    }
-
-    const sourceStudents = gradebook?.students ?? []
-    if (!sourceStudents.length) {
-      setAttendanceMsg('No students available to mark attendance.')
-      return
-    }
-
-    const entries = sourceStudents.map((s) => ({
-      student_id: s.id,
-      is_present: !!attendanceMarks[s.id],
-    }))
-
-    setBulkSessions((prev) => [
-      ...prev,
-      {
-        date: attendanceDate,
-        assessment_component: attendanceComponent,
-        note: attendanceNote,
-        entries,
-      },
-    ])
-    setAttendanceMsg('Added to bulk queue.')
-    setAttendanceSuccess(true)
-  }
-
-  async function onSubmitAttendanceBulk() {
-    setAttendanceMsg(null)
-    setAttendanceSuccess(false)
-
-    if (!bulkSessions.length) {
-      setAttendanceMsg('Bulk queue is empty.')
+    if (!csvFile) {
+      setAttendanceMsg('Please choose a CSV file first.')
       return
     }
 
     try {
-      const res = await apiJson<{ detail: string }>(`/api/v1/classrooms/${id}/attendance/bulk/`, {
-        method: 'POST',
-        body: {
-          sessions: bulkSessions,
-        },
-      })
+      setCsvUploading(true)
+      const form = new FormData()
+      form.append('file', csvFile)
+
+      const res = await apiFormData<{ detail: string }>(`/api/v1/classrooms/${id}/attendance/bulk/csv/`, form)
       setAttendanceMsg(res.detail)
       setAttendanceSuccess(true)
-      setBulkSessions([])
-      setAttendanceNote('')
+      setCsvFile(null)
       await fetchAttendance()
       await fetchGradebook()
     } catch (err: any) {
-      setAttendanceMsg(err?.message ?? 'Bulk attendance save failed')
+      setAttendanceMsg(err?.message ?? 'CSV upload failed')
       setAttendanceSuccess(false)
+    } finally {
+      setCsvUploading(false)
     }
+  }
+
+  function onDownloadAttendanceCsvTemplate() {
+    const header = 'date,assessment_component,roll_no,is_present,note\n'
+    const sampleRows = [
+      '2026-03-24,theory,THA079BEI111,1,Week 1',
+      '2026-03-24,theory,THA079BEI112,0,Week 1',
+    ]
+    const csv = header + sampleRows.join('\n') + '\n'
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'attendance_template.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
   }
 
   // ─── Create Task ───────────────────────────────────────────
@@ -841,12 +819,6 @@ export function ClassroomDetailPage() {
 
                     <div className="sm:col-span-3 flex flex-wrap gap-2">
                       <button className="btn-primary" type="submit">Save This Day</button>
-                      <button className="btn-secondary" type="button" onClick={onQueueAttendanceBulk}>
-                        Add to Bulk Queue
-                      </button>
-                      <button className="btn-secondary" type="button" onClick={onSubmitAttendanceBulk}>
-                        Submit Bulk ({bulkSessions.length})
-                      </button>
                     </div>
                   </form>
 
@@ -856,18 +828,33 @@ export function ClassroomDetailPage() {
                     </div>
                   )}
 
-                  {bulkSessions.length > 0 && (
-                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                      <div className="font-semibold">Bulk Queue</div>
-                      <ul className="mt-2 space-y-1">
-                        {bulkSessions.map((s, idx) => (
-                          <li key={`${s.date}-${idx}`}>
-                            {s.date} · {s.assessment_component.toUpperCase()} · {s.entries.filter((e) => e.is_present).length}/{s.entries.length} present
-                          </li>
-                        ))}
-                      </ul>
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">CSV Bulk Upload</div>
+                      <button className="btn-secondary text-xs" type="button" onClick={onDownloadAttendanceCsvTemplate}>
+                        Download Template
+                      </button>
                     </div>
-                  )}
+                    <p className="mt-2 text-xs text-slate-500">
+                      Required columns: date, assessment_component, roll_no, is_present. Optional: note.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        className="input"
+                        type="file"
+                        accept=".csv,text/csv"
+                        onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+                      />
+                      <button
+                        className="btn-primary"
+                        type="button"
+                        onClick={onUploadAttendanceCsv}
+                        disabled={!csvFile || csvUploading}
+                      >
+                        {csvUploading ? 'Uploading...' : 'Upload CSV'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
