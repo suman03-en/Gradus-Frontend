@@ -355,7 +355,7 @@ export function ClassroomDetailPage() {
       const form = new FormData()
       form.append('file', csvFile)
 
-      const res = await apiFormData<{ detail: string }>(`/api/v1/classrooms/${id}/attendance/bulk/csv/`, form)
+      const res = await apiFormData<{ detail: string }>(`/api/v1/classrooms/${id}/attendance/summary/csv/`, form)
       setAttendanceMsg(res.detail)
       setAttendanceSuccess(true)
       setCsvFile(null)
@@ -370,17 +370,17 @@ export function ClassroomDetailPage() {
   }
 
   function onDownloadAttendanceCsvTemplate() {
-    const header = 'date,assessment_component,roll_no,is_present,note\n'
+    const header = 'assessment_component,roll_no,present_days,total_days,note\n'
     const sampleRows = [
-      '2026-03-24,theory,THA079BEI111,1,Week 1',
-      '2026-03-24,theory,THA079BEI112,0,Week 1',
+      'theory,THA079BEI111,20,24,Month Summary',
+      'theory,THA079BEI112,19,24,Month Summary',
     ]
     const csv = header + sampleRows.join('\n') + '\n'
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = 'attendance_template.csv'
+    link.download = 'attendance_summary_template.csv'
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -755,7 +755,7 @@ export function ClassroomDetailPage() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Mark Attendance</div>
-                      <p className="mt-1 text-sm text-slate-500">Mark day-by-day or queue multiple days and submit in bulk later.</p>
+                      <p className="mt-1 text-sm text-slate-500">Mark day-by-day manually or upload final attendance summary by CSV.</p>
                     </div>
                     <button className="btn-secondary" onClick={fetchAttendance} disabled={attendanceLoading}>
                       Refresh
@@ -836,7 +836,7 @@ export function ClassroomDetailPage() {
                       </button>
                     </div>
                     <p className="mt-2 text-xs text-slate-500">
-                      Required columns: date, assessment_component, roll_no, is_present. Optional: note.
+                      Required columns: assessment_component, roll_no, present_days, total_days. Optional: note.
                     </p>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                       <input
