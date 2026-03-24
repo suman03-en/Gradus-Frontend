@@ -495,9 +495,6 @@ export function ClassroomDetailPage() {
             <Link to={`/classrooms/${id}/gradebook`} className="btn-primary flex-1 sm:flex-none">
               Gradebook
             </Link>
-            <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setActiveTab('attendance')}>
-              Attendance
-            </button>
             {isOwnerTeacher && (
               <>
                 <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
