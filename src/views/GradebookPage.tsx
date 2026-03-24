@@ -13,6 +13,10 @@ function weightageKey(component: 'theory' | 'lab', taskType: string) {
   return `${component}:${taskType}`
 }
 
+function attendanceWeightageKey(component: 'theory' | 'lab') {
+  return `attendance:${component}`
+}
+
 type WeightageFormItem = {
   include_in_final: boolean
   weightage: string
@@ -33,6 +37,7 @@ export function GradebookPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [weightageForm, setWeightageForm] = useState<Record<string, WeightageFormItem>>({})
+  const [attendanceWeightageForm, setAttendanceWeightageForm] = useState<Record<string, WeightageFormItem>>({})
   const [weightageTotal, setWeightageTotal] = useState(0)
   const [weightageLoading, setWeightageLoading] = useState(false)
   const [weightageSaving, setWeightageSaving] = useState(false)
@@ -103,7 +108,15 @@ export function GradebookPage() {
           weightage: String(item.weightage ?? 0),
         }
       }
+      const attendanceNext: Record<string, WeightageFormItem> = {}
+      for (const item of res.attendance_weightages ?? []) {
+        attendanceNext[attendanceWeightageKey(item.assessment_component)] = {
+          include_in_final: item.include_in_final,
+          weightage: String(item.weightage ?? 0),
+        }
+      }
       setWeightageForm(next)
+      setAttendanceWeightageForm(attendanceNext)
       setWeightageTotal(res.total_configured_weightage)
     } catch (e: any) {
       setWeightageMsg(e?.message ?? 'Failed to load weightages.')
@@ -125,19 +138,43 @@ export function GradebookPage() {
         if (!row?.include_in_final) return total
         const value = Number.parseFloat(row.weightage)
         return total + (Number.isFinite(value) ? value : 0)
-      }, 0),
+      }, 0) + (() => {
+        const attendance = attendanceWeightageForm[attendanceWeightageKey('theory')]
+        if (!attendance?.include_in_final) return 0
+        const value = Number.parseFloat(attendance.weightage)
+        return Number.isFinite(value) ? value : 0
+      })(),
       lab: TASK_TYPE_CHOICES.reduce((total, choice) => {
         const row = weightageForm[weightageKey('lab', choice.value)]
         if (!row?.include_in_final) return total
         const value = Number.parseFloat(row.weightage)
         return total + (Number.isFinite(value) ? value : 0)
-      }, 0),
+      }, 0) + (() => {
+        const attendance = attendanceWeightageForm[attendanceWeightageKey('lab')]
+        if (!attendance?.include_in_final) return 0
+        const value = Number.parseFloat(attendance.weightage)
+        return Number.isFinite(value) ? value : 0
+      })(),
     }
-  }, [weightageForm])
+  }, [weightageForm, attendanceWeightageForm])
 
   function updateWeightage(component: 'theory' | 'lab', taskType: string, patch: Partial<WeightageFormItem>) {
     setWeightageForm((prev) => {
       const key = weightageKey(component, taskType)
+      const current = prev[key] ?? { include_in_final: false, weightage: '0' }
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          ...patch,
+        },
+      }
+    })
+  }
+
+  function updateAttendanceWeightage(component: 'theory' | 'lab', patch: Partial<WeightageFormItem>) {
+    setAttendanceWeightageForm((prev) => {
+      const key = attendanceWeightageKey(component)
       const current = prev[key] ?? { include_in_final: false, weightage: '0' }
       return {
         ...prev,
@@ -177,6 +214,29 @@ export function GradebookPage() {
       return
     }
 
+    const normalizedAttendance = TASK_COMPONENT_CHOICES.map((componentChoice) => {
+      const component = componentChoice.value as 'theory' | 'lab'
+      const row = attendanceWeightageForm[attendanceWeightageKey(component)] ?? {
+        include_in_final: false,
+        weightage: '0',
+      }
+      const parsed = Number.parseFloat(row.weightage)
+      const safeWeightage = Number.isFinite(parsed) ? parsed : 0
+      return {
+        assessment_component: component,
+        include_in_final: row.include_in_final,
+        weightage: row.include_in_final ? safeWeightage : 0,
+      }
+    })
+
+    const invalidAttendance = normalizedAttendance.some(
+      (item) => item.include_in_final && item.weightage <= 0,
+    )
+    if (invalidAttendance) {
+      setWeightageMsg('Included attendance must have weightage greater than 0.')
+      return
+    }
+
     const totalsByComponent = normalized.reduce(
       (acc, item) => {
         if (item.include_in_final) {
@@ -186,14 +246,22 @@ export function GradebookPage() {
       },
       { theory: 0, lab: 0 },
     )
+    for (const item of normalizedAttendance) {
+      if (item.include_in_final) {
+        totalsByComponent[item.assessment_component] += item.weightage
+      }
+    }
     if (totalsByComponent.theory > 100 || totalsByComponent.lab > 100) {
-      setWeightageMsg('Total included weightage cannot exceed 100 within Theory or Lab.')
+      setWeightageMsg('Total included weightage (tasks + attendance) cannot exceed 100 within Theory or Lab.')
       return
     }
 
     setWeightageSaving(true)
     try {
-      const payload: ClassroomWeightageConfigPayload = { weightages: normalized }
+      const payload: ClassroomWeightageConfigPayload = {
+        weightages: normalized,
+        attendance_weightages: normalizedAttendance,
+      }
       const res = await apiJson<ClassroomWeightageConfig>(`/api/v1/classrooms/${id}/gradebook/weightages/`, {
         method: 'PUT',
         body: payload,
@@ -380,6 +448,45 @@ export function GradebookPage() {
                         </div>
                       )
                     })}
+
+                    {(() => {
+                      const row = attendanceWeightageForm[attendanceWeightageKey(weightageComponent)] ?? {
+                        include_in_final: false,
+                        weightage: '0',
+                      }
+                      return (
+                        <div key={`attendance-${weightageComponent}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">Attendance</div>
+                              <div className="text-xs text-slate-500">Component-level attendance contribution</div>
+                            </div>
+                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={row.include_in_final}
+                                disabled={isStudent}
+                                onChange={(e) => updateAttendanceWeightage(weightageComponent, { include_in_final: e.target.checked })}
+                              />
+                              Include
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="input w-full sm:w-28"
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                value={row.weightage}
+                                disabled={isStudent || !row.include_in_final}
+                                onChange={(e) => updateAttendanceWeightage(weightageComponent, { weightage: e.target.value })}
+                              />
+                              <span className="text-sm text-slate-500">%</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               </div>
@@ -436,6 +543,8 @@ export function GradebookPage() {
               const finalMarks = Number.isFinite(student.final_marks) ? student.final_marks : 0
               const theoryTotals = student.component_totals?.theory ?? { obtained: 0, full_marks: 0 }
               const labTotals = student.component_totals?.lab ?? { obtained: 0, full_marks: 0 }
+              const theoryAttendance = student.attendance?.theory
+              const labAttendance = student.attendance?.lab
 
               return (
                 <div key={student.id} className="card overflow-hidden">
@@ -458,6 +567,9 @@ export function GradebookPage() {
                       </div>
                       <div className="mt-2 text-xs text-slate-500">
                         Theory: {theoryTotals.obtained}/{theoryTotals.full_marks} | Lab: {labTotals.obtained}/{labTotals.full_marks}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Attendance - Theory: {theoryAttendance?.percentage ?? 0}% ({theoryAttendance?.present ?? 0}/{theoryAttendance?.total ?? 0}) | Lab: {labAttendance?.percentage ?? 0}% ({labAttendance?.present ?? 0}/{labAttendance?.total ?? 0})
                       </div>
                     </div>
                   </div>

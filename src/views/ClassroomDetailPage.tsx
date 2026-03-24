@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { apiJson } from '../lib/api'
-import type { Classroom, Task, GradebookData, User } from '../lib/types'
+import type {
+  Classroom,
+  Task,
+  GradebookData,
+  User,
+  ClassroomAttendanceResponse,
+} from '../lib/types'
 import { useAuth } from '../state/auth'
 import { TASK_STATUS_CHOICES, TASK_MODE_CHOICES, TASK_TYPE_CHOICES, TASK_COMPONENT_CHOICES } from '../lib/choices'
 import { firstFieldError, getFieldErrors, type FieldErrors } from '../lib/validation'
@@ -17,7 +23,7 @@ function choiceLabel(choices: readonly { value: string; label: string }[], val: 
   return choices.find((c) => c.value === val)?.label ?? val
 }
 
-type ClassroomTab = 'overview' | 'resources' | 'students' | 'tasks'
+type ClassroomTab = 'overview' | 'resources' | 'students' | 'tasks' | 'attendance'
 
 export function ClassroomDetailPage() {
   const { id } = useParams()
@@ -47,6 +53,23 @@ export function ClassroomDetailPage() {
   const [gradebook, setGradebook] = useState<GradebookData | null>(null)
   const [gbLoading, setGbLoading] = useState(false)
   const [studentNames, setStudentNames] = useState<Record<string, string>>({})
+  const [attendanceData, setAttendanceData] = useState<ClassroomAttendanceResponse | null>(null)
+  const [attendanceLoading, setAttendanceLoading] = useState(false)
+  const [attendanceMsg, setAttendanceMsg] = useState<string | null>(null)
+  const [attendanceSuccess, setAttendanceSuccess] = useState(false)
+  const [attendanceDate, setAttendanceDate] = useState('')
+  const [attendanceComponent, setAttendanceComponent] = useState<'theory' | 'lab'>('theory')
+  const [attendanceNote, setAttendanceNote] = useState('')
+  const [attendanceMarks, setAttendanceMarks] = useState<Record<string, boolean>>({})
+  const [bulkSessions, setBulkSessions] = useState<
+    Array<{
+      date: string
+      assessment_component: 'theory' | 'lab'
+      note: string
+      entries: Array<{ student_id: string; is_present: boolean }>
+    }>
+  >([])
+
   const fetchGradebook = useCallback(async () => {
     setGbLoading(true)
     try {
@@ -56,6 +79,18 @@ export function ClassroomDetailPage() {
       // ignore
     } finally {
       setGbLoading(false)
+    }
+  }, [id])
+
+  const fetchAttendance = useCallback(async () => {
+    setAttendanceLoading(true)
+    try {
+      const data = await apiJson<ClassroomAttendanceResponse>(`/api/v1/classrooms/${id}/attendance/`)
+      setAttendanceData(data)
+    } catch {
+      setAttendanceData(null)
+    } finally {
+      setAttendanceLoading(false)
     }
   }, [id])
 
@@ -158,6 +193,18 @@ export function ClassroomDetailPage() {
     }
   }, [activeTab, gradebook, fetchGradebook])
 
+  useEffect(() => {
+    if (activeTab === 'attendance' && !attendanceData) {
+      fetchAttendance()
+    }
+  }, [activeTab, attendanceData, fetchAttendance])
+
+  useEffect(() => {
+    if (activeTab === 'attendance' && !gradebook && !isStudent) {
+      fetchGradebook()
+    }
+  }, [activeTab, gradebook, isStudent, fetchGradebook])
+
   // Set activeTab from navigation state (when coming back from task detail)
   useEffect(() => {
     const state = location.state as any
@@ -205,6 +252,18 @@ export function ClassroomDetailPage() {
     }
   }, [activeTab, gradebook, studentNames])
 
+  useEffect(() => {
+    if (!gradebook?.students?.length) return
+    setAttendanceMarks((prev) => {
+      if (Object.keys(prev).length) return prev
+      const defaults: Record<string, boolean> = {}
+      for (const s of gradebook.students) {
+        defaults[s.id] = true
+      }
+      return defaults
+    })
+  }, [gradebook])
+
   // ─── Add Student ───────────────────────────────────────────
   async function onAddStudent(e: React.FormEvent) {
     e.preventDefault()
@@ -242,6 +301,111 @@ export function ClassroomDetailPage() {
     } catch (err: any) {
       setAddTeacherMsg(err?.message ?? 'Add teacher failed')
       setAddTeacherSuccess(false)
+    }
+  }
+
+  async function onSaveAttendanceDay(e: React.FormEvent) {
+    e.preventDefault()
+    setAttendanceMsg(null)
+    setAttendanceSuccess(false)
+
+    if (!attendanceDate) {
+      setAttendanceMsg('Please choose attendance date.')
+      return
+    }
+
+    const sourceStudents = gradebook?.students ?? []
+    if (!sourceStudents.length) {
+      setAttendanceMsg('No students available to mark attendance.')
+      return
+    }
+
+    try {
+      const entries = sourceStudents.map((s) => ({
+        student_id: s.id,
+        is_present: !!attendanceMarks[s.id],
+      }))
+
+      const res = await apiJson<{ detail: string }>(`/api/v1/classrooms/${id}/attendance/`, {
+        method: 'POST',
+        body: {
+          date: attendanceDate,
+          assessment_component: attendanceComponent,
+          note: attendanceNote,
+          entries,
+        },
+      })
+
+      setAttendanceMsg(res.detail)
+      setAttendanceSuccess(true)
+      setAttendanceNote('')
+      await fetchAttendance()
+      await fetchGradebook()
+    } catch (err: any) {
+      setAttendanceMsg(err?.message ?? 'Attendance save failed')
+      setAttendanceSuccess(false)
+    }
+  }
+
+  async function onQueueAttendanceBulk(e: React.FormEvent) {
+    e.preventDefault()
+    setAttendanceMsg(null)
+    setAttendanceSuccess(false)
+
+    if (!attendanceDate) {
+      setAttendanceMsg('Please choose attendance date before adding to bulk queue.')
+      return
+    }
+
+    const sourceStudents = gradebook?.students ?? []
+    if (!sourceStudents.length) {
+      setAttendanceMsg('No students available to mark attendance.')
+      return
+    }
+
+    const entries = sourceStudents.map((s) => ({
+      student_id: s.id,
+      is_present: !!attendanceMarks[s.id],
+    }))
+
+    setBulkSessions((prev) => [
+      ...prev,
+      {
+        date: attendanceDate,
+        assessment_component: attendanceComponent,
+        note: attendanceNote,
+        entries,
+      },
+    ])
+    setAttendanceMsg('Added to bulk queue.')
+    setAttendanceSuccess(true)
+  }
+
+  async function onSubmitAttendanceBulk() {
+    setAttendanceMsg(null)
+    setAttendanceSuccess(false)
+
+    if (!bulkSessions.length) {
+      setAttendanceMsg('Bulk queue is empty.')
+      return
+    }
+
+    try {
+      const res = await apiJson<{ detail: string }>(`/api/v1/classrooms/${id}/attendance/bulk/`, {
+        method: 'POST',
+        body: {
+          sessions: bulkSessions,
+        },
+      })
+      setAttendanceMsg(res.detail)
+      setAttendanceSuccess(true)
+      setBulkSessions([])
+      setAttendanceNote('')
+      await fetchAttendance()
+      await fetchGradebook()
+    } catch (err: any) {
+      setAttendanceMsg(err?.message ?? 'Bulk attendance save failed')
+      setAttendanceSuccess(false)
     }
   }
 
@@ -353,6 +517,9 @@ export function ClassroomDetailPage() {
             <Link to={`/classrooms/${id}/gradebook`} className="btn-primary flex-1 sm:flex-none">
               Gradebook
             </Link>
+            <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setActiveTab('attendance')}>
+              Attendance
+            </button>
             {isOwnerTeacher && (
               <>
                 <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setEditing(!editing)}>
@@ -369,6 +536,9 @@ export function ClassroomDetailPage() {
             <Link to={`/classrooms/${id}/gradebook`} className="btn-primary w-full sm:w-auto">
               My Grades
             </Link>
+            <button className="btn-secondary w-full sm:w-auto" onClick={() => setActiveTab('attendance')}>
+              My Attendance
+            </button>
           </div>
         )}
       </div>
@@ -396,6 +566,9 @@ export function ClassroomDetailPage() {
               </button>
               <button type="button" className={activeTab === 'tasks' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('tasks')}>
                 Tasks
+              </button>
+              <button type="button" className={activeTab === 'attendance' ? 'btn-primary text-xs' : 'btn-secondary text-xs'} onClick={() => setActiveTab('attendance')}>
+                Attendance
               </button>
             </div>
           </div>
@@ -592,6 +765,169 @@ export function ClassroomDetailPage() {
                        </li>
                      ))}
                    </ul>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'attendance' && (
+            <div className="space-y-6">
+              {!isStudent && (
+                <div className="card p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Mark Attendance</div>
+                      <p className="mt-1 text-sm text-slate-500">Mark day-by-day or queue multiple days and submit in bulk later.</p>
+                    </div>
+                    <button className="btn-secondary" onClick={fetchAttendance} disabled={attendanceLoading}>
+                      Refresh
+                    </button>
+                  </div>
+
+                  <form className="mt-4 grid gap-3 sm:grid-cols-3" onSubmit={onSaveAttendanceDay}>
+                    <div>
+                      <label className="label">Date</label>
+                      <input
+                        className="input mt-1"
+                        type="date"
+                        value={attendanceDate}
+                        onChange={(e) => setAttendanceDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Component</label>
+                      <select
+                        className="input mt-1"
+                        value={attendanceComponent}
+                        onChange={(e) => setAttendanceComponent(e.target.value as 'theory' | 'lab')}
+                      >
+                        {TASK_COMPONENT_CHOICES.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className="label">Note (Optional)</label>
+                      <input
+                        className="input mt-1"
+                        value={attendanceNote}
+                        onChange={(e) => setAttendanceNote(e.target.value)}
+                        placeholder="Topic or remarks"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Student Presence</div>
+                      {!gradebook?.students?.length ? (
+                        <div className="mt-2 text-sm text-slate-500">No students available.</div>
+                      ) : (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {gradebook.students.map((s) => (
+                            <label key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                              <span className="text-sm text-slate-700">{studentNames[s.username] ?? s.username} ({s.roll_no})</span>
+                              <input
+                                type="checkbox"
+                                checked={!!attendanceMarks[s.id]}
+                                onChange={(e) => {
+                                  const checked = e.target.checked
+                                  setAttendanceMarks((prev) => ({ ...prev, [s.id]: checked }))
+                                }}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="sm:col-span-3 flex flex-wrap gap-2">
+                      <button className="btn-primary" type="submit">Save This Day</button>
+                      <button className="btn-secondary" type="button" onClick={onQueueAttendanceBulk}>
+                        Add to Bulk Queue
+                      </button>
+                      <button className="btn-secondary" type="button" onClick={onSubmitAttendanceBulk}>
+                        Submit Bulk ({bulkSessions.length})
+                      </button>
+                    </div>
+                  </form>
+
+                  {attendanceMsg && (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${attendanceSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                      {attendanceMsg}
+                    </div>
+                  )}
+
+                  {bulkSessions.length > 0 && (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <div className="font-semibold">Bulk Queue</div>
+                      <ul className="mt-2 space-y-1">
+                        {bulkSessions.map((s, idx) => (
+                          <li key={`${s.date}-${idx}`}>
+                            {s.date} · {s.assessment_component.toUpperCase()} · {s.entries.filter((e) => e.is_present).length}/{s.entries.length} present
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="card p-6">
+                <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">
+                  {isStudent ? 'My Attendance' : 'Attendance Summary'}
+                </div>
+
+                {attendanceLoading ? (
+                  <div className="mt-4 h-10 w-full animate-pulse rounded bg-slate-100" />
+                ) : !attendanceData || attendanceData.attendance_summary.length === 0 ? (
+                  <div className="mt-3 text-sm text-slate-500">No attendance records yet.</div>
+                ) : (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500">
+                          {!isStudent && <th className="py-2 pr-4">Student</th>}
+                          <th className="py-2 pr-4">Present</th>
+                          <th className="py-2 pr-4">Total</th>
+                          <th className="py-2">Percentage</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {attendanceData.attendance_summary.map((s) => (
+                          <tr key={s.student_id} className="border-b border-slate-100">
+                            {!isStudent && <td className="py-2 pr-4 text-slate-700">{s.username} ({s.roll_no})</td>}
+                            <td className="py-2 pr-4">{s.present}</td>
+                            <td className="py-2 pr-4">{s.total}</td>
+                            <td className="py-2 font-semibold text-slate-800">{s.percentage}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="card p-6">
+                <div className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-600">Attendance History</div>
+                {attendanceLoading ? (
+                  <div className="mt-4 h-10 w-full animate-pulse rounded bg-slate-100" />
+                ) : !attendanceData || attendanceData.sessions.length === 0 ? (
+                  <div className="mt-3 text-sm text-slate-500">No attendance sessions recorded yet.</div>
+                ) : (
+                  <ul className="mt-3 space-y-3">
+                    {attendanceData.sessions.map((session) => (
+                      <li key={session.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm font-semibold text-slate-800">
+                            {new Date(session.date).toLocaleDateString()} · {session.assessment_component.toUpperCase()}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Present: {session.records.filter((r) => r.is_present).length}/{session.records.length}
+                          </div>
+                        </div>
+                        {session.note && <div className="mt-1 text-xs text-slate-500">{session.note}</div>}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </div>
